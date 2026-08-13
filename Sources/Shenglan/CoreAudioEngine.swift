@@ -502,6 +502,9 @@ final class AudioController: ObservableObject {
     @Published var menuBarVolumeStyle: MenuBarVolumeStyle = .percentage {
         didSet { UserDefaults.standard.set(menuBarVolumeStyle.rawValue, forKey: Self.menuBarVolumeStyleKey) }
     }
+    @Published var menuBarPopoverStyle: MenuBarPopoverStyle = .minimal {
+        didSet { UserDefaults.standard.set(menuBarPopoverStyle.rawValue, forKey: Self.menuBarPopoverStyleKey) }
+    }
     @Published var useLiquidGlass = true {
         didSet { UserDefaults.standard.set(useLiquidGlass, forKey: Self.useLiquidGlassKey) }
     }
@@ -537,6 +540,7 @@ final class AudioController: ObservableObject {
     @Published var rememberedDevices: [RememberedAudioDevice] = []
     @Published private(set) var favoriteApplicationKeys = Set<String>()
     @Published private(set) var applicationOrders: [String: [String]] = [:]
+    @Published private(set) var minimalApplicationOrder: [String] = []
     @Published private(set) var collapsedApplicationGroups = Set<String>()
 
     private let processAudioManager = ProcessAudioGainManager()
@@ -568,6 +572,7 @@ final class AudioController: ObservableObject {
     private static let menuBarIconKey = "menuBarIconChoice.v1"
     private static let showMenuBarVolumeKey = "showMenuBarVolume.v1"
     private static let menuBarVolumeStyleKey = "menuBarVolumeStyle.v1"
+    private static let menuBarPopoverStyleKey = "menuBarPopoverStyle.v1"
     private static let useLiquidGlassKey = "useLiquidGlass.v1"
     private static let glassPanelOpacityKey = "glassPanelOpacity.v1"
     private static let customThemeBackgroundEnabledKey = "customThemeBackgroundEnabled.v1"
@@ -577,6 +582,7 @@ final class AudioController: ObservableObject {
     private static let systemAudioPermissionKey = "systemAudioPermissionGranted.v1"
     private static let favoriteApplicationKeysKey = "favoriteApplicationKeys.v1"
     private static let applicationOrdersKey = "applicationOrders.v1"
+    private static let minimalApplicationOrderKey = "minimalApplicationOrder.v1"
     private static let collapsedApplicationGroupsKey = "collapsedApplicationGroups.v1"
 
     init() {
@@ -594,6 +600,10 @@ final class AudioController: ObservableObject {
         if let value = UserDefaults.standard.string(forKey: Self.menuBarVolumeStyleKey),
            let style = MenuBarVolumeStyle(rawValue: value) {
             menuBarVolumeStyle = style
+        }
+        if let value = UserDefaults.standard.string(forKey: Self.menuBarPopoverStyleKey),
+           let style = MenuBarPopoverStyle(rawValue: value) {
+            menuBarPopoverStyle = style
         }
         if UserDefaults.standard.object(forKey: Self.useLiquidGlassKey) != nil {
             useLiquidGlass = UserDefaults.standard.bool(forKey: Self.useLiquidGlassKey)
@@ -626,6 +636,7 @@ final class AudioController: ObservableObject {
             systemAudioPermissionGranted = UserDefaults.standard.bool(forKey: Self.systemAudioPermissionKey)
         }
         favoriteApplicationKeys = Set(UserDefaults.standard.stringArray(forKey: Self.favoriteApplicationKeysKey) ?? [])
+        minimalApplicationOrder = UserDefaults.standard.stringArray(forKey: Self.minimalApplicationOrderKey) ?? []
         collapsedApplicationGroups = Set(UserDefaults.standard.stringArray(forKey: Self.collapsedApplicationGroupsKey) ?? [])
         if let data = UserDefaults.standard.data(forKey: Self.applicationOrdersKey),
            let saved = try? JSONDecoder().decode([String: [String]].self, from: data) {
@@ -821,6 +832,11 @@ final class AudioController: ObservableObject {
         return "name:\(app.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
     }
 
+    func minimalApplicationOrderKey(for app: ApplicationMixState) -> String {
+        let name = app.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return "\(applicationPreferenceKey(for: app))|name:\(name)"
+    }
+
     func isApplicationFavorite(_ app: ApplicationMixState) -> Bool {
         favoriteApplicationKeys.contains(applicationPreferenceKey(for: app))
     }
@@ -883,6 +899,55 @@ final class AudioController: ObservableObject {
             if lhsLive != rhsLive { return lhsLive < rhsLive }
             return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
         }
+    }
+
+    var orderedMinimalApplications: [ApplicationMixState] {
+        let savedPositions = Dictionary(
+            uniqueKeysWithValues: minimalApplicationOrder.enumerated().map { ($0.element, $0.offset) }
+        )
+        let livePositions = Dictionary(
+            applications.enumerated().map { (minimalApplicationOrderKey(for: $0.element), $0.offset) },
+            uniquingKeysWith: { first, _ in first }
+        )
+        return applications.sorted { lhs, rhs in
+            let lhsKey = minimalApplicationOrderKey(for: lhs)
+            let rhsKey = minimalApplicationOrderKey(for: rhs)
+            let lhsSaved = savedPositions[lhsKey]
+            let rhsSaved = savedPositions[rhsKey]
+            if let lhsSaved, let rhsSaved, lhsSaved != rhsSaved { return lhsSaved < rhsSaved }
+            if lhsSaved != nil, rhsSaved == nil { return true }
+            if lhsSaved == nil, rhsSaved != nil { return false }
+            return (livePositions[lhsKey] ?? .max) < (livePositions[rhsKey] ?? .max)
+        }
+    }
+
+    @discardableResult
+    func moveMinimalApplication(preferenceKey sourceKey: String, by rowOffset: Int) -> Bool {
+        guard rowOffset != 0 else { return false }
+
+        var orderedKeys: [String] = []
+        var namesByKey: [String: String] = [:]
+        for item in orderedMinimalApplications {
+            let key = minimalApplicationOrderKey(for: item)
+            namesByKey[key] = item.name
+            if !orderedKeys.contains(key) { orderedKeys.append(key) }
+        }
+
+        guard let sourceIndex = orderedKeys.firstIndex(of: sourceKey), orderedKeys.count > 1 else {
+            return false
+        }
+        let destination = min(max(0, sourceIndex + rowOffset), orderedKeys.count - 1)
+        guard destination != sourceIndex else { return false }
+
+        orderedKeys.remove(at: sourceIndex)
+        orderedKeys.insert(sourceKey, at: destination)
+        minimalApplicationOrder = orderedKeys
+        UserDefaults.standard.set(orderedKeys, forKey: Self.minimalApplicationOrderKey)
+        statusMessage = L10n.format(
+            "已调整 %@ 的极简列表顺序",
+            L10n.tr(namesByKey[sourceKey] ?? "应用")
+        )
+        return true
     }
 
     func isApplicationGroupCollapsed(_ group: ApplicationOrderGroup) -> Bool {

@@ -34,13 +34,20 @@ This repository is not affiliated with or endorsed by any commercial audio-contr
 - **Output routing** — sends an individual app to a selected audio output device.
 - **Volume boost** — supports up to 4x per-app gain when extra headroom is needed.
 - **Live device discovery** — tracks input, output, Bluetooth, and built-in audio devices.
-- **Menu bar control** — a compact controller with configurable icon and volume display styles.
+- **Menu bar control** — switch between a 336 pt Minimal popover for daily volume changes and the original Full controller for device routing and organization.
 - **App organization** — favorites, media-aware categories, collapsible groups, and drag-to-reorder.
 - **Native macOS behavior** — background operation, login launch, window restoration, and full-screen popover support.
 - **Liquid Glass interface** — native glass where available, with system-material fallback on earlier macOS versions.
 - **Custom appearance** — light, dark, system-following themes, optional background images, opacity, and blur controls.
 - **Multilingual UI** — Simplified Chinese, English, Japanese, French, German, and Korean.
 - **Local-first privacy** — audio is processed in memory and is never recorded, saved, or uploaded.
+
+## Iteration history
+
+AudioFlow keeps dated, append-only product iterations in [CHANGELOG.md](CHANGELOG.md). Older release notes remain available under [`docs/`](docs/).
+
+- **2026-08-14 · 1.1.0** — added Minimal and Full popover styles, tightened Minimal mode to 336 pt, and added persistent drag ordering for its app list. See [release notes](docs/RELEASE_NOTES_1.1.0.md).
+- **2026-08-13 · 1.0.0** — initial open-source release with system/per-app mixing, routing, organization, themes, localization, and DMG packaging. See [release notes](docs/RELEASE_NOTES_1.0.0.md).
 
 ## Requirements
 
