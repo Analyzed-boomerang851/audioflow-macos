@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "AudioFlow";
+"CFBundleName" = "AudioFlow";
+"NSAudioCaptureUsageDescription" = "AudioFlow benötigt Zugriff auf Systemaudio, um Apps mit Tonausgabe zu erkennen und Lautstärke, Stummschaltung und Ausgabegerät einzeln zu steuern. Audio wird niemals aufgenommen, gespeichert oder hochgeladen.";

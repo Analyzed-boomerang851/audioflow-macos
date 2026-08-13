@@ -1,0 +1,21 @@
+.DS_Store
+.build/
+.swiftpm/
+DerivedData/
+xcuserdata/
+dist/
+.local-signing/
+*.cer
+*.p12
+*.provisionprofile
+*.dmg
+*.zip
+
+# Local QA captures and design explorations
+design-qa*
+native-*.png
+native-*.jpg
+qa-brand/
+qa-settings/
+settings-redesign-comparison.png
+brand-icon-candidates/

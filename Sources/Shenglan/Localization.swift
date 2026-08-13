@@ -1,0 +1,267 @@
+import Foundation
+import SwiftUI
+
+/// App-owned localization keeps every window and the menu-bar popover on the
+/// same runtime language. Device and application names are deliberately left
+/// untouched when they are not known interface keys.
+enum L10n {
+    private(set) static var current: AppLanguage = .simplifiedChinese
+
+    static func setLanguage(_ language: AppLanguage) {
+        current = language
+    }
+
+    static func tr(_ source: String, language: AppLanguage? = nil) -> String {
+        let language = language ?? current
+        guard language != .simplifiedChinese else { return source }
+        if let translated = tables[language]?[source] { return translated }
+        return translateDynamic(source, language: language) ?? source
+    }
+
+    static func format(_ source: String, _ arguments: CVarArg..., language: AppLanguage? = nil) -> String {
+        String(format: tr(source, language: language), locale: (language ?? current).locale, arguments: arguments)
+    }
+
+    private static func translateDynamic(_ source: String, language: AppLanguage) -> String? {
+        let patterns: [(String, [AppLanguage: String])] = [
+            (#"^(\d+) 个应用$"#, [.english: "%@ apps", .japanese: "%@個のアプリ", .french: "%@ applications", .german: "%@ Apps", .korean: "%@개 앱"]),
+            (#"^音频应用（(\d+)）$"#, [.english: "Audio Apps (%@)", .japanese: "オーディオアプリ（%@）", .french: "Applications audio (%@)", .german: "Audio-Apps (%@)", .korean: "오디오 앱 (%@)"]),
+            (#"^(\d+) 个音频端点 · Core Audio 实时更新$"#, [.english: "%@ audio endpoints · Live Core Audio", .japanese: "%@個のオーディオ端点 · Core Audioリアルタイム更新", .french: "%@ points audio · Core Audio en direct", .german: "%@ Audio-Endpunkte · Core Audio live", .korean: "%@개 오디오 엔드포인트 · Core Audio 실시간"]),
+            (#"^当前没有(.+)应用$"#, [.english: "No %@ apps", .japanese: "%@アプリはありません", .french: "Aucune application %@", .german: "Keine %@-Apps", .korean: "%@ 앱 없음"]),
+            (#"^(.+)（音频进程）$"#, [.english: "%@ (Audio Process)", .japanese: "%@（オーディオプロセス）", .french: "%@ (processus audio)", .german: "%@ (Audioprozess)", .korean: "%@ (오디오 프로세스)"]),
+            (#"^系统音频进程（PID (\d+)）$"#, [.english: "System Audio Process (PID %@)", .japanese: "システムオーディオプロセス（PID %@）", .french: "Processus audio système (PID %@)", .german: "System-Audioprozess (PID %@)", .korean: "시스템 오디오 프로세스 (PID %@)"]),
+            (#"^未知音频进程（PID (\d+)）$"#, [.english: "Unknown Audio Process (PID %@)", .japanese: "不明なオーディオプロセス（PID %@）", .french: "Processus audio inconnu (PID %@)", .german: "Unbekannter Audioprozess (PID %@)", .korean: "알 수 없는 오디오 프로세스 (PID %@)"]),
+            (#"^(\d+)%$"#, [.english: "%@%", .japanese: "%@%", .french: "%@ %", .german: "%@ %", .korean: "%@%"])
+        ]
+
+        for (pattern, translations) in patterns {
+            guard let regex = try? NSRegularExpression(pattern: pattern),
+                  let match = regex.firstMatch(in: source, range: NSRange(source.startIndex..., in: source)),
+                  let template = translations[language] else { continue }
+            var result = template
+            if match.numberOfRanges > 1,
+               let range = Range(match.range(at: 1), in: source) {
+                result = result.replacingOccurrences(of: "%@", with: tr(String(source[range]), language: language))
+            }
+            return result
+        }
+        return nil
+    }
+
+    private static let tables: [AppLanguage: [String: String]] = [
+        .english: english,
+        .japanese: japanese,
+        .french: french,
+        .german: german,
+        .korean: korean
+    ]
+
+    private static let english: [String: String] = [
+        "音合流": "AudioFlow", "系统与应用声音": "System & App Audio", "混音": "Mixer", "设备": "Devices", "设置": "Settings",
+        "通用": "General", "外观": "Appearance", "权限": "Permissions", "启动与菜单栏": "Launch & Menu Bar", "主题与玻璃材质": "Theme & Glass", "系统授权状态": "System Access",
+        "音合流偏好": "AudioFlow Preferences", "所有设置仅保存在本机": "All settings stay on this Mac", "语言": "Language", "界面语言": "App Language",
+        "切换整个应用与菜单栏控制器的显示语言。": "Change the language across the entire app and menu-bar controller.", "中文": "Chinese", "英文": "English", "日文": "Japanese", "法文": "French", "德文": "German", "韩文": "Korean",
+        "简体中文": "Simplified Chinese", "日本語": "Japanese", "Français": "French", "Deutsch": "German", "한국어": "Korean",
+        "启动": "Launch", "登录时启动音合流": "Launch AudioFlow at Login", "菜单栏": "Menu Bar", "菜单栏图标": "Menu Bar Icon", "显示系统音量": "Show System Volume", "音量显示样式": "Volume Display Style",
+        "选择音合流声环、动态扬声器或音量柱。": "Choose the AudioFlow ring, dynamic speaker, or volume meter.", "在菜单栏图标旁显示实时系统音量。": "Show live system volume beside the menu-bar icon.", "可选择数字、分段、进度条或动态仪表。": "Choose numbers, segments, a progress bar, or a live gauge.",
+        "管理登录启动和菜单栏显示方式。": "Manage login launch and menu-bar presentation.", "选择主题，并控制系统原生液态玻璃。": "Choose a theme and control native Liquid Glass.", "查看并申请声音控制所需的系统权限。": "Review and request the system access required for audio control.",
+        "主题": "Theme", "跟随系统": "Follow System", "浅色": "Light", "深色": "Dark", "界面材质": "Interface Material", "macOS 原生液态玻璃": "Native macOS Liquid Glass", "浅色使用白色玻璃，深色使用黑色玻璃。": "Use white glass in Light Mode and black glass in Dark Mode.", "使用 macOS 原生液态玻璃": "Use Native macOS Liquid Glass", "玻璃面板透明度": "Glass Panel Opacity", "调整卡片、按钮与弹层玻璃的透光程度。": "Adjust the transparency of glass cards, buttons, and the menu-bar panel.",
+        "自定义主题背景": "Custom Theme Background", "上传一张图片，让玻璃界面取样你的专属背景。": "Choose an image so the glass interface samples your own background.", "选择图片": "Choose Image", "更换图片": "Replace Image", "移除图片": "Remove Image", "启用自定义背景": "Use Custom Background", "背景图片透明度": "Background Image Opacity", "调整图片在玻璃下方的显现强度。": "Adjust how strongly the image appears beneath the glass.", "背景毛玻璃模糊度": "Background Blur", "仅虚化自定义背景图片，不影响文字与控件清晰度。": "Blur only the custom background without softening text or controls.", "支持 PNG、JPEG、HEIC 与 TIFF，图片会复制并保存在本机。": "Supports PNG, JPEG, HEIC, and TIFF. The image is copied and stored locally.", "尚未选择图片": "No image selected", "自定义背景已启用": "Custom background enabled",
+        "系统输出": "System Output", "系统输出设备": "System Output Device", "系统主音量": "System Master Volume", "默认输出设备": "Default Output Device", "默认输入设备": "Default Input Device", "设备与音量控制": "Device & Volume Controls", "未检测到设备": "No Device Detected", "当前输出设备不支持由 Core Audio 调节系统音量": "The current output device does not support system volume control through Core Audio",
+        "音频应用": "Audio Apps", "全部": "All", "收藏": "Favorites", "音乐": "Music", "视频": "Video", "其他": "Other", "其他音效": "Other Audio", "全部静音": "Mute All", "取消全部静音": "Unmute All", "当前没有音频应用": "No Audio Apps", "播放声音后会加入列表": "Apps appear here after playing audio", "应用播放声音后会加入这里；暂停时保留，只有退出应用后才会消失。": "Apps appear here after playing audio, remain while paused, and disappear only after quitting.", "立即刷新": "Refresh Now", "还没有收藏应用": "No Favorite Apps", "点击应用左侧星标即可收藏": "Click the star beside an app to add it to Favorites", "点击应用最左侧的星标，即可固定到收藏页签。": "Click the leftmost star to pin an app to Favorites.", "应用启动并产生过音频后，会自动归入这里。": "Apps are grouped here after launching and producing audio.",
+        "输出": "Output", "输入": "Input", "未检测到": "Not Detected", "跟随系统输出": "Follow System Output", "输出不可用": "Output Unavailable", "正在发声": "Playing", "已暂停": "Paused", "已静音": "Muted", "打开控制器": "Open Controller", "退出音合流": "Quit AudioFlow", "恢复默认": "Restore Defaults", "立即静音": "Mute Now", "取消静音": "Unmute", "加入收藏": "Add to Favorites", "取消收藏": "Remove from Favorites", "音量增强": "Volume Boost", "15 分钟后静音": "Mute in 15 Minutes", "30 分钟后静音": "Mute in 30 Minutes", "取消定时静音": "Cancel Timed Mute", "更多控制": "More Controls",
+        "音频设备": "Audio Devices", "输出设备": "Output Devices", "输入设备": "Input Devices", "最近使用": "Recently Used", "重新连接后自动恢复": "Restore Automatically After Reconnecting", "未连接": "Disconnected", "系统默认": "System Default", "设备在线": "Device Online", "没有检测到音频设备": "No Audio Devices Detected", "输出控制": "Output Control", "输入控制": "Input Control", "设为系统默认输出": "Set as System Default Output", "设为系统默认输入": "Set as System Default Input", "音频格式": "Audio Format", "采样率": "Sample Rate", "输入声道": "Input Channels", "输出声道": "Output Channels", "连接信息": "Connection Info", "传输方式": "Transport", "制造商": "Manufacturer", "设备 UID": "Device UID", "内建设备": "Built-in Device", "蓝牙": "Bluetooth", "雷雳": "Thunderbolt", "聚合设备": "Aggregate Device", "虚拟设备": "Virtual Device", "未知厂商": "Unknown Manufacturer",
+        "权限中心": "Permission Center", "音合流只申请真实声音控制所需的权限，音频不会保存或上传。": "AudioFlow requests only the access required for real audio control. Audio is never saved or uploaded.", "系统音频录制": "System Audio Recording", "用于发现正在发声的进程，并执行独立音量、静音、增强和输出路由。": "Used to discover playing processes and apply per-app volume, mute, boost, and output routing.", "登录时启动": "Launch at Login", "登录 Mac 后自动启动音合流菜单栏控制器。": "Start the AudioFlow menu-bar controller after logging in to your Mac.", "申请权限": "Request Access", "申请启动项": "Request Login Item", "打开系统设置": "Open System Settings", "已允许": "Allowed", "未允许": "Not Allowed", "尚未申请": "Not Requested", "等待系统批准": "Awaiting System Approval", "当前不可用": "Unavailable", "设备枚举和系统主音量控制由 Core Audio 提供，不需要额外隐私权限。": "Core Audio provides device discovery and system master volume control without additional privacy access.",
+        "权限已授权": "Access Granted", "权限未授权": "Access Not Granted", "检查系统权限": "Check System Access", "音合流提示": "AudioFlow Notice", "知道了": "OK", "控制器页面": "Controller Page", "打开声音控制器": "Open Audio Controller", "声音控制": "Audio Control", "设置…": "Settings…",
+        "展开": "Expand", "收起": "Collapse", "已折叠": "Collapsed", "已展开": "Expanded", "上移": "Move Up", "下移": "Move Down", "按住并上下拖动调整应用顺序": "Drag up or down to reorder apps", "拖动调整": "Drag to reorder", "的顺序": "order", "将": "Move", "%@ 个应用": "%@ apps",
+        "音合流声环": "AudioFlow Ring", "动态扬声器": "Dynamic Speaker", "音量柱": "Volume Bars", "百分比数字": "Percentage", "紧凑数字": "Compact Number", "分段音量格": "Segmented Meter", "迷你进度条": "Mini Progress Bar", "动态仪表": "Live Gauge",
+        "系统音量": "System Volume", "打开音合流": "Open AudioFlow", "打开系统与应用音量控制器": "Open the system and app volume controller", "请先在权限中心允许系统音频录制": "Allow system audio recording in Permission Center first",
+        "已允许，登录后音合流会在菜单栏启动。": "Allowed. AudioFlow will start in the menu bar after login.", "已提交申请，请前往系统设置的“登录项”完成批准。": "Request submitted. Approve it in System Settings > Login Items.", "当前未申请登录时启动。": "Launch at login has not been requested.", "当前尚未注册登录启动项。开启后会向 macOS 提交申请。": "No login item is registered. Turning this on submits a request to macOS.", "登录启动状态未知。": "Login item status is unknown.",
+        "选择自定义主题背景": "Choose Custom Theme Background", "选择一张会显示在液态玻璃下方的图片。": "Choose an image to display beneath the Liquid Glass surfaces.", "无法读取所选图片，请选择有效的 PNG、JPEG、HEIC 或 TIFF 图片。": "The selected image could not be read. Choose a valid PNG, JPEG, HEIC, or TIFF image.", "自定义主题背景已更新": "Custom theme background updated", "已移除自定义主题背景": "Custom theme background removed", "%@失败（%@）": "%@ failed (%@)",
+        "已允许登录时启动": "Launch at login allowed", "登录启动项已申请，等待在系统设置中批准": "Login item requested; awaiting approval in System Settings", "已关闭登录时启动": "Launch at login turned off", "登录启动服务不可用": "Login item service unavailable", "登录启动状态已更新": "Login item status updated", "无法修改登录启动项。": "Could not change the login item.",
+        "当前输入设备不支持软件增益。": "The current input device does not support software gain.", "系统音频录制权限已可用": "System audio recording access is available", "正在向 macOS 申请系统音频录制权限…": "Requesting system audio recording access from macOS…", "系统音频权限未获得。": "System audio access was not granted.", "系统输出设备当前不可用": "The system output device is currently unavailable", "未知设备": "Unknown Device", "应用": "App",
+        "Core Audio 已连接": "Core Audio Connected", "已取消收藏 %@": "Removed %@ from Favorites", "已收藏 %@": "Added %@ to Favorites", "已调整 %@ 在%@中的顺序": "Reordered %@ in %@", "已拖动调整 %@ 在%@中的顺序": "Drag-reordered %@ in %@", "已拖动调整 %@ 所在%@列表的顺序": "Drag-reordered %@ in the %@ list",
+        "系统主音量已同步为 %@%%": "System master volume synced to %@%%", "输入增益已同步": "Input gain synced", "已切换系统输出设备：%@": "System output switched to: %@", "已切换系统输入设备：%@": "System input switched to: %@", "采样率已设置为 %@ Hz": "Sample rate set to %@ Hz",
+        "已恢复应用的默认声音设置": "Restored the app's default audio settings", "已静音全部正在发声的应用": "Muted all playing apps", "已取消全部应用静音": "Unmuted all apps", "已设置 %@ 分钟后静音": "Mute scheduled in %@ minutes", "已取消定时静音": "Timed mute cancelled",
+        "%@ 当前未连接，请重新选择输出设备": "%@ is disconnected. Choose another output device.", "正在实时处理 %@": "Processing %@ in real time", "%@ 已恢复系统直通": "%@ restored to system passthrough", "无法控制 %@。": "Unable to control %@.",
+        "设置系统主音量": "Set system master volume", "设置麦克风输入增益": "Set microphone input gain", "静音麦克风": "Mute microphone", "取消麦克风静音": "Unmute microphone", "静音系统输出": "Mute system output", "取消系统静音": "Unmute system output", "静音设备": "Mute device", "取消设备静音": "Unmute device", "切换默认输出设备": "Switch default output device", "切换系统提示音设备": "Switch system alert device", "切换默认输入设备": "Switch default input device", "设置采样率": "Set sample rate", "申请系统音频录制权限": "Request system audio recording access", "启动应用音频处理": "Start app audio processing"
+    ]
+
+    private static let japanese: [String: String] = makeLanguageMap([
+        "音合流": "オーディオフロー", "系统与应用声音": "システムとアプリの音声", "混音": "ミキサー", "设备": "デバイス", "设置": "設定", "通用": "一般", "外观": "外観", "权限": "権限",
+        "语言": "言語", "界面语言": "表示言語", "切换整个应用与菜单栏控制器的显示语言。": "アプリ全体とメニューバーコントローラの表示言語を切り替えます。", "主题": "テーマ", "跟随系统": "システムに合わせる", "浅色": "ライト", "深色": "ダーク",
+        "自定义主题背景": "カスタムテーマ背景", "上传一张图片，让玻璃界面取样你的专属背景。": "画像を選択して、ガラスUIに独自の背景を反映します。", "选择图片": "画像を選択", "更换图片": "画像を変更", "移除图片": "画像を削除", "启用自定义背景": "カスタム背景を使用", "玻璃面板透明度": "ガラスパネルの透明度", "调整卡片、按钮与弹层玻璃的透光程度。": "カード、ボタン、メニューパネルの透明度を調整します。", "背景图片透明度": "背景画像の透明度", "调整图片在玻璃下方的显现强度。": "ガラスの下に表示される画像の強さを調整します。", "背景毛玻璃模糊度": "背景のぼかし", "仅虚化自定义背景图片，不影响文字与控件清晰度。": "文字やコントロールに影響せず背景画像だけをぼかします。",
+        "系统输出": "システム出力", "系统音量": "システム音量", "默认输出设备": "デフォルト出力デバイス", "默认输入设备": "デフォルト入力デバイス", "音频应用": "オーディオアプリ", "全部": "すべて", "收藏": "お気に入り", "音乐": "音楽", "视频": "ビデオ", "其他": "その他", "其他音效": "その他の音声", "全部静音": "すべてミュート", "取消全部静音": "すべてのミュートを解除", "当前没有音频应用": "オーディオアプリはありません", "播放声音后会加入列表": "音声を再生すると一覧に表示されます", "打开控制器": "コントローラを開く", "退出音合流": "オーディオフローを終了",
+        "输出": "出力", "输入": "入力", "已静音": "ミュート", "正在发声": "再生中", "已暂停": "一時停止", "跟随系统输出": "システム出力に従う", "音频设备": "オーディオデバイス", "输出设备": "出力デバイス", "输入设备": "入力デバイス", "最近使用": "最近使用", "系统默认": "システム既定", "设备在线": "オンライン",
+        "权限中心": "権限センター", "系统音频录制": "システム音声録音", "登录时启动": "ログイン時に起動", "申请权限": "権限を申請", "申请启动项": "ログイン項目を申請", "打开系统设置": "システム設定を開く", "已允许": "許可済み", "未允许": "未許可", "尚未申请": "未申請", "权限已授权": "権限付与済み", "权限未授权": "権限なし", "检查系统权限": "システム権限を確認"
+    ].merging(japaneseSupplement) { _, supplemental in supplemental })
+
+    private static let french: [String: String] = makeLanguageMap([
+        "音合流": "AudioFlow", "系统与应用声音": "Audio système et applications", "混音": "Mixage", "设备": "Appareils", "设置": "Réglages", "通用": "Général", "外观": "Apparence", "权限": "Autorisations",
+        "语言": "Langue", "界面语言": "Langue de l’interface", "切换整个应用与菜单栏控制器的显示语言。": "Change la langue de toute l’application et du contrôleur de la barre des menus.", "主题": "Thème", "跟随系统": "Selon le système", "浅色": "Clair", "深色": "Sombre",
+        "自定义主题背景": "Arrière-plan personnalisé", "上传一张图片，让玻璃界面取样你的专属背景。": "Choisissez une image pour personnaliser le fond de l’interface en verre.", "选择图片": "Choisir une image", "更换图片": "Remplacer l’image", "移除图片": "Supprimer l’image", "启用自定义背景": "Utiliser le fond personnalisé", "玻璃面板透明度": "Opacité des panneaux en verre", "调整卡片、按钮与弹层玻璃的透光程度。": "Réglez la transparence des cartes, boutons et du panneau de la barre des menus.", "背景图片透明度": "Opacité de l’image de fond", "调整图片在玻璃下方的显现强度。": "Réglez la visibilité de l’image sous le verre.", "背景毛玻璃模糊度": "Flou de l’arrière-plan", "仅虚化自定义背景图片，不影响文字与控件清晰度。": "Floutez uniquement l’image de fond sans affecter les textes ni les commandes.",
+        "系统输出": "Sortie système", "系统音量": "Volume système", "默认输出设备": "Sortie par défaut", "默认输入设备": "Entrée par défaut", "音频应用": "Applications audio", "全部": "Tout", "收藏": "Favoris", "音乐": "Musique", "视频": "Vidéo", "其他": "Autres", "其他音效": "Autres sons", "全部静音": "Tout couper", "取消全部静音": "Tout réactiver", "当前没有音频应用": "Aucune application audio", "播放声音后会加入列表": "Les applications apparaissent après la lecture audio", "打开控制器": "Ouvrir le contrôleur", "退出音合流": "Quitter AudioFlow",
+        "输出": "Sortie", "输入": "Entrée", "已静音": "Muet", "正在发声": "Lecture", "已暂停": "En pause", "跟随系统输出": "Suivre la sortie système", "音频设备": "Appareils audio", "输出设备": "Sorties", "输入设备": "Entrées", "最近使用": "Utilisés récemment", "系统默认": "Par défaut", "设备在线": "En ligne",
+        "权限中心": "Centre des autorisations", "系统音频录制": "Enregistrement audio système", "登录时启动": "Lancer à l’ouverture de session", "申请权限": "Demander l’accès", "申请启动项": "Demander le lancement", "打开系统设置": "Ouvrir Réglages Système", "已允许": "Autorisé", "未允许": "Non autorisé", "尚未申请": "Non demandé", "权限已授权": "Accès accordé", "权限未授权": "Accès refusé", "检查系统权限": "Vérifier l’accès"
+    ].merging(frenchSupplement) { _, supplemental in supplemental })
+
+    private static let german: [String: String] = makeLanguageMap([
+        "音合流": "AudioFlow", "系统与应用声音": "System- und App-Audio", "混音": "Mixer", "设备": "Geräte", "设置": "Einstellungen", "通用": "Allgemein", "外观": "Darstellung", "权限": "Berechtigungen",
+        "语言": "Sprache", "界面语言": "Oberflächensprache", "切换整个应用与菜单栏控制器的显示语言。": "Ändert die Sprache der gesamten App und des Menüleisten-Controllers.", "主题": "Thema", "跟随系统": "Systemeinstellung", "浅色": "Hell", "深色": "Dunkel",
+        "自定义主题背景": "Eigenes Themenbild", "上传一张图片，让玻璃界面取样你的专属背景。": "Wähle ein Bild als individuellen Hintergrund für die Glasoberfläche.", "选择图片": "Bild auswählen", "更换图片": "Bild ersetzen", "移除图片": "Bild entfernen", "启用自定义背景": "Eigenen Hintergrund verwenden", "玻璃面板透明度": "Transparenz der Glasflächen", "调整卡片、按钮与弹层玻璃的透光程度。": "Transparenz von Karten, Tasten und Menüleistenfenster anpassen.", "背景图片透明度": "Deckkraft des Hintergrundbilds", "调整图片在玻璃下方的显现强度。": "Sichtbarkeit des Bildes unter den Glasflächen anpassen.", "背景毛玻璃模糊度": "Hintergrundunschärfe", "仅虚化自定义背景图片，不影响文字与控件清晰度。": "Nur das Hintergrundbild weichzeichnen, ohne Text und Bedienelemente zu beeinflussen.",
+        "系统输出": "Systemausgabe", "系统音量": "Systemlautstärke", "默认输出设备": "Standardausgabe", "默认输入设备": "Standardeingabe", "音频应用": "Audio-Apps", "全部": "Alle", "收藏": "Favoriten", "音乐": "Musik", "视频": "Video", "其他": "Andere", "其他音效": "Andere Sounds", "全部静音": "Alle stummschalten", "取消全部静音": "Alle Stummschaltungen aufheben", "当前没有音频应用": "Keine Audio-Apps", "播放声音后会加入列表": "Apps erscheinen nach der Audiowiedergabe", "打开控制器": "Controller öffnen", "退出音合流": "AudioFlow beenden",
+        "输出": "Ausgabe", "输入": "Eingabe", "已静音": "Stumm", "正在发声": "Wiedergabe", "已暂停": "Pausiert", "跟随系统输出": "Systemausgabe folgen", "音频设备": "Audiogeräte", "输出设备": "Ausgabegeräte", "输入设备": "Eingabegeräte", "最近使用": "Zuletzt verwendet", "系统默认": "Systemstandard", "设备在线": "Online",
+        "权限中心": "Berechtigungscenter", "系统音频录制": "Systemaudioaufnahme", "登录时启动": "Bei Anmeldung starten", "申请权限": "Zugriff anfordern", "申请启动项": "Anmeldeobjekt anfordern", "打开系统设置": "Systemeinstellungen öffnen", "已允许": "Erlaubt", "未允许": "Nicht erlaubt", "尚未申请": "Nicht angefordert", "权限已授权": "Zugriff gewährt", "权限未授权": "Kein Zugriff", "检查系统权限": "Systemzugriff prüfen"
+    ].merging(germanSupplement) { _, supplemental in supplemental })
+
+    private static let korean: [String: String] = makeLanguageMap([
+        "音合流": "오디오플로우", "系统与应用声音": "시스템 및 앱 오디오", "混音": "믹서", "设备": "기기", "设置": "설정", "通用": "일반", "外观": "외관", "权限": "권한",
+        "语言": "언어", "界面语言": "인터페이스 언어", "切换整个应用与菜单栏控制器的显示语言。": "앱 전체와 메뉴 막대 컨트롤러의 표시 언어를 변경합니다.", "主题": "테마", "跟随系统": "시스템 설정 사용", "浅色": "라이트", "深色": "다크",
+        "自定义主题背景": "사용자 지정 테마 배경", "上传一张图片，让玻璃界面取样你的专属背景。": "이미지를 선택해 유리 인터페이스에 나만의 배경을 적용합니다.", "选择图片": "이미지 선택", "更换图片": "이미지 교체", "移除图片": "이미지 제거", "启用自定义背景": "사용자 지정 배경 사용", "玻璃面板透明度": "유리 패널 투명도", "调整卡片、按钮与弹层玻璃的透光程度。": "카드, 버튼 및 메뉴 막대 패널의 투명도를 조절합니다.", "背景图片透明度": "배경 이미지 투명도", "调整图片在玻璃下方的显现强度。": "유리 아래에 보이는 이미지의 강도를 조절합니다.", "背景毛玻璃模糊度": "배경 흐림", "仅虚化自定义背景图片，不影响文字与控件清晰度。": "텍스트와 컨트롤은 선명하게 유지하고 배경 이미지만 흐리게 합니다.",
+        "系统输出": "시스템 출력", "系统音量": "시스템 음량", "默认输出设备": "기본 출력 기기", "默认输入设备": "기본 입력 기기", "音频应用": "오디오 앱", "全部": "전체", "收藏": "즐겨찾기", "音乐": "음악", "视频": "비디오", "其他": "기타", "其他音效": "기타 사운드", "全部静音": "모두 음소거", "取消全部静音": "모두 음소거 해제", "当前没有音频应用": "오디오 앱 없음", "播放声音后会加入列表": "소리를 재생하면 목록에 표시됩니다", "打开控制器": "컨트롤러 열기", "退出音合流": "오디오플로우 종료",
+        "输出": "출력", "输入": "입력", "已静音": "음소거됨", "正在发声": "재생 중", "已暂停": "일시 정지", "跟随系统输出": "시스템 출력 따르기", "音频设备": "오디오 기기", "输出设备": "출력 기기", "输入设备": "입력 기기", "最近使用": "최근 사용", "系统默认": "시스템 기본값", "设备在线": "온라인",
+        "权限中心": "권한 센터", "系统音频录制": "시스템 오디오 녹음", "登录时启动": "로그인 시 실행", "申请权限": "권한 요청", "申请启动项": "로그인 항목 요청", "打开系统设置": "시스템 설정 열기", "已允许": "허용됨", "未允许": "허용 안 됨", "尚未申请": "요청하지 않음", "权限已授权": "권한 허용됨", "权限未授权": "권한 없음", "检查系统权限": "시스템 권한 확인"
+    ].merging(koreanSupplement) { _, supplemental in supplemental })
+
+    private static let japaneseSupplement: [String: String] = [
+        "启动与菜单栏": "起動とメニューバー", "主题与玻璃材质": "テーマとガラス", "系统授权状态": "システム権限", "音合流偏好": "オーディオフローの設定", "所有设置仅保存在本机": "すべての設定はこのMacにのみ保存されます",
+        "中文": "中国語", "英文": "英語", "日文": "日本語", "法文": "フランス語", "德文": "ドイツ語", "韩文": "韓国語", "简体中文": "簡体字中国語", "日本語": "日本語", "Français": "フランス語", "Deutsch": "ドイツ語", "한국어": "韓国語",
+        "启动": "起動", "登录时启动音合流": "ログイン時にオーディオフローを起動", "菜单栏": "メニューバー", "菜单栏图标": "メニューバーアイコン", "显示系统音量": "システム音量を表示", "音量显示样式": "音量表示スタイル",
+        "选择音合流声环、动态扬声器或音量柱。": "オーディオフローリング、ダイナミックスピーカー、音量バーから選択します。", "在菜单栏图标旁显示实时系统音量。": "メニューバーアイコンの横に現在のシステム音量を表示します。", "可选择数字、分段、进度条或动态仪表。": "数値、セグメント、進捗バー、ライブゲージから選択できます。",
+        "管理登录启动和菜单栏显示方式。": "ログイン時の起動とメニューバー表示を管理します。", "选择主题，并控制系统原生液态玻璃。": "テーマを選択し、macOSネイティブのLiquid Glassを制御します。", "查看并申请声音控制所需的系统权限。": "音声制御に必要なシステム権限を確認・申請します。",
+        "界面材质": "インターフェース素材", "macOS 原生液态玻璃": "macOSネイティブLiquid Glass", "浅色使用白色玻璃，深色使用黑色玻璃。": "ライトでは白いガラス、ダークでは黒いガラスを使用します。", "使用 macOS 原生液态玻璃": "macOSネイティブLiquid Glassを使用",
+        "支持 PNG、JPEG、HEIC 与 TIFF，图片会复制并保存在本机。": "PNG、JPEG、HEIC、TIFFに対応し、画像はこのMacにコピーして保存されます。", "尚未选择图片": "画像が選択されていません", "自定义背景已启用": "カスタム背景が有効です",
+        "系统输出设备": "システム出力デバイス", "系统主音量": "システム主音量", "设备与音量控制": "デバイスと音量の制御", "未检测到设备": "デバイスが見つかりません", "当前输出设备不支持由 Core Audio 调节系统音量": "現在の出力デバイスはCore Audioによるシステム音量調整に対応していません",
+        "应用播放声音后会加入这里；暂停时保留，只有退出应用后才会消失。": "音声を再生したアプリがここに表示されます。一時停止中も残り、アプリ終了時のみ消えます。", "立即刷新": "今すぐ更新", "还没有收藏应用": "お気に入りのアプリはありません", "点击应用左侧星标即可收藏": "アプリ左側の星をクリックしてお気に入りに追加", "点击应用最左侧的星标，即可固定到收藏页签。": "アプリの一番左にある星をクリックすると、お気に入りタブに固定できます。", "应用启动并产生过音频后，会自动归入这里。": "起動後に音声を出したアプリは自動的にここへ分類されます。",
+        "未检测到": "未検出", "输出不可用": "出力を利用できません", "恢复默认": "初期設定に戻す", "立即静音": "今すぐミュート", "取消静音": "ミュート解除", "加入收藏": "お気に入りに追加", "取消收藏": "お気に入りから削除", "音量增强": "音量ブースト", "15 分钟后静音": "15分後にミュート", "30 分钟后静音": "30分後にミュート", "取消定时静音": "予約ミュートを解除", "更多控制": "その他の操作",
+        "重新连接后自动恢复": "再接続後に自動復元", "未连接": "未接続", "没有检测到音频设备": "オーディオデバイスが見つかりません", "输出控制": "出力制御", "输入控制": "入力制御", "设为系统默认输出": "システムのデフォルト出力に設定", "设为系统默认输入": "システムのデフォルト入力に設定", "音频格式": "オーディオ形式", "采样率": "サンプルレート", "输入声道": "入力チャンネル", "输出声道": "出力チャンネル", "连接信息": "接続情報", "传输方式": "接続方式", "制造商": "製造元", "设备 UID": "デバイスUID", "内建设备": "内蔵デバイス", "蓝牙": "Bluetooth", "雷雳": "Thunderbolt", "聚合设备": "複数出力装置", "虚拟设备": "仮想デバイス", "未知厂商": "不明な製造元",
+        "音合流只申请真实声音控制所需的权限，音频不会保存或上传。": "オーディオフローは実際の音声制御に必要な権限だけを要求し、音声を保存またはアップロードしません。", "用于发现正在发声的进程，并执行独立音量、静音、增强和输出路由。": "音声を出しているプロセスを検出し、アプリごとの音量、ミュート、ブースト、出力経路を制御します。", "登录 Mac 后自动启动音合流菜单栏控制器。": "Macへのログイン後にオーディオフローのメニューバーコントローラを自動起動します。", "等待系统批准": "システムの承認待ち", "当前不可用": "現在利用できません", "设备枚举和系统主音量控制由 Core Audio 提供，不需要额外隐私权限。": "デバイス検出とシステム主音量の制御はCore Audioが提供するため、追加のプライバシー権限は不要です。",
+        "音合流提示": "オーディオフローからのお知らせ", "知道了": "OK", "控制器页面": "コントローラページ", "打开声音控制器": "音声コントローラを開く", "声音控制": "音声コントロール", "设置…": "設定…",
+        "展开": "展開", "收起": "折りたたむ", "已折叠": "折りたたみ済み", "已展开": "展開済み", "上移": "上へ移動", "下移": "下へ移動", "按住并上下拖动调整应用顺序": "長押しして上下にドラッグし、アプリの順序を変更", "拖动调整": "ドラッグして並べ替え", "的顺序": "の順序", "将": "移動", "%@ 个应用": "%@個のアプリ",
+        "音合流声环": "オーディオフローリング", "动态扬声器": "ダイナミックスピーカー", "音量柱": "音量バー", "百分比数字": "パーセント表示", "紧凑数字": "コンパクト数値", "分段音量格": "セグメントメーター", "迷你进度条": "ミニ進捗バー", "动态仪表": "ライブゲージ",
+        "打开音合流": "オーディオフローを開く", "打开系统与应用音量控制器": "システムとアプリの音量コントローラを開く", "请先在权限中心允许系统音频录制": "先に権限センターでシステム音声録音を許可してください",
+        "已允许，登录后音合流会在菜单栏启动。": "許可済みです。ログイン後、オーディオフローがメニューバーで起動します。", "已提交申请，请前往系统设置的“登录项”完成批准。": "申請しました。システム設定の「ログイン項目」で承認してください。", "当前未申请登录时启动。": "ログイン時起動は申請されていません。", "当前尚未注册登录启动项。开启后会向 macOS 提交申请。": "ログイン項目は未登録です。有効にするとmacOSへ申請します。", "登录启动状态未知。": "ログイン項目の状態を確認できません。",
+        "选择自定义主题背景": "カスタムテーマ背景を選択", "选择一张会显示在液态玻璃下方的图片。": "Liquid Glassの下に表示する画像を選択します。", "无法读取所选图片，请选择有效的 PNG、JPEG、HEIC 或 TIFF 图片。": "選択した画像を読み込めません。PNG、JPEG、HEIC、TIFF画像を選択してください。", "自定义主题背景已更新": "カスタムテーマ背景を更新しました", "已移除自定义主题背景": "カスタムテーマ背景を削除しました", "%@失败（%@）": "%@に失敗しました（%@）",
+        "已允许登录时启动": "ログイン時起動を許可しました", "登录启动项已申请，等待在系统设置中批准": "ログイン項目を申請しました。システム設定での承認を待っています", "已关闭登录时启动": "ログイン時起動を無効にしました", "登录启动服务不可用": "ログイン項目サービスを利用できません", "登录启动状态已更新": "ログイン項目の状態を更新しました", "无法修改登录启动项。": "ログイン項目を変更できません。",
+        "当前输入设备不支持软件增益。": "現在の入力デバイスはソフトウェアゲインに対応していません。", "系统音频录制权限已可用": "システム音声録音の権限を利用できます", "正在向 macOS 申请系统音频录制权限…": "macOSにシステム音声録音の権限を申請しています…", "系统音频权限未获得。": "システム音声の権限が許可されていません。", "系统输出设备当前不可用": "システム出力デバイスは現在利用できません", "未知设备": "不明なデバイス", "应用": "アプリ",
+        "Core Audio 已连接": "Core Audio接続済み", "已取消收藏 %@": "%@をお気に入りから削除しました", "已收藏 %@": "%@をお気に入りに追加しました", "已调整 %@ 在%@中的顺序": "%@の%@内での順序を変更しました", "已拖动调整 %@ 在%@中的顺序": "%@をドラッグして%@内の順序を変更しました", "已拖动调整 %@ 所在%@列表的顺序": "%@をドラッグして%@リスト内の順序を変更しました",
+        "系统主音量已同步为 %@%%": "システム主音量を%@%%に同期しました", "输入增益已同步": "入力ゲインを同期しました", "已切换系统输出设备：%@": "システム出力を切り替えました：%@", "已切换系统输入设备：%@": "システム入力を切り替えました：%@", "采样率已设置为 %@ Hz": "サンプルレートを%@ Hzに設定しました",
+        "已恢复应用的默认声音设置": "アプリの既定音声設定を復元しました", "已静音全部正在发声的应用": "再生中のすべてのアプリをミュートしました", "已取消全部应用静音": "すべてのアプリのミュートを解除しました", "已设置 %@ 分钟后静音": "%@分後のミュートを設定しました", "已取消定时静音": "予約ミュートを解除しました",
+        "%@ 当前未连接，请重新选择输出设备": "%@は接続されていません。出力デバイスを選び直してください", "正在实时处理 %@": "%@をリアルタイム処理中", "%@ 已恢复系统直通": "%@をシステムパススルーに戻しました", "无法控制 %@。": "%@を制御できません。",
+        "设置系统主音量": "システム主音量を設定", "设置麦克风输入增益": "マイク入力ゲインを設定", "静音麦克风": "マイクをミュート", "取消麦克风静音": "マイクのミュートを解除", "静音系统输出": "システム出力をミュート", "取消系统静音": "システムのミュートを解除", "静音设备": "デバイスをミュート", "取消设备静音": "デバイスのミュートを解除", "切换默认输出设备": "デフォルト出力を切り替え", "切换系统提示音设备": "システム効果音デバイスを切り替え", "切换默认输入设备": "デフォルト入力を切り替え", "设置采样率": "サンプルレートを設定", "申请系统音频录制权限": "システム音声録音の権限を申請", "启动应用音频处理": "アプリ音声処理を開始"
+    ]
+
+    private static let frenchSupplement: [String: String] = [
+        "启动与菜单栏": "Démarrage et barre des menus", "主题与玻璃材质": "Thème et verre", "系统授权状态": "Accès système", "音合流偏好": "Préférences AudioFlow", "所有设置仅保存在本机": "Tous les réglages restent sur ce Mac",
+        "中文": "Chinois", "英文": "Anglais", "日文": "Japonais", "法文": "Français", "德文": "Allemand", "韩文": "Coréen", "简体中文": "Chinois simplifié", "日本語": "Japonais", "Français": "Français", "Deutsch": "Allemand", "한국어": "Coréen",
+        "启动": "Démarrage", "登录时启动音合流": "Lancer AudioFlow à l’ouverture de session", "菜单栏": "Barre des menus", "菜单栏图标": "Icône de la barre des menus", "显示系统音量": "Afficher le volume système", "音量显示样式": "Style d’affichage du volume",
+        "选择音合流声环、动态扬声器或音量柱。": "Choisissez l’anneau AudioFlow, le haut-parleur dynamique ou les barres de volume.", "在菜单栏图标旁显示实时系统音量。": "Affiche le volume système en temps réel près de l’icône de la barre des menus.", "可选择数字、分段、进度条或动态仪表。": "Choisissez un nombre, des segments, une barre de progression ou une jauge dynamique.",
+        "管理登录启动和菜单栏显示方式。": "Gérez le lancement à l’ouverture de session et l’affichage dans la barre des menus.", "选择主题，并控制系统原生液态玻璃。": "Choisissez un thème et contrôlez le Liquid Glass natif de macOS.", "查看并申请声音控制所需的系统权限。": "Consultez et demandez les autorisations système nécessaires au contrôle audio.",
+        "界面材质": "Matériau de l’interface", "macOS 原生液态玻璃": "Liquid Glass natif de macOS", "浅色使用白色玻璃，深色使用黑色玻璃。": "Le mode clair utilise du verre blanc et le mode sombre du verre noir.", "使用 macOS 原生液态玻璃": "Utiliser le Liquid Glass natif de macOS",
+        "支持 PNG、JPEG、HEIC 与 TIFF，图片会复制并保存在本机。": "Formats PNG, JPEG, HEIC et TIFF. L’image est copiée et conservée sur ce Mac.", "尚未选择图片": "Aucune image sélectionnée", "自定义背景已启用": "Arrière-plan personnalisé activé",
+        "系统输出设备": "Périphérique de sortie système", "系统主音量": "Volume principal du système", "设备与音量控制": "Périphériques et volume", "未检测到设备": "Aucun périphérique détecté", "当前输出设备不支持由 Core Audio 调节系统音量": "Le périphérique de sortie actuel ne permet pas à Core Audio de régler le volume système",
+        "应用播放声音后会加入这里；暂停时保留，只有退出应用后才会消失。": "Les applications apparaissent ici après avoir émis du son, restent visibles en pause et ne disparaissent qu’à leur fermeture.", "立即刷新": "Actualiser", "还没有收藏应用": "Aucune application favorite", "点击应用左侧星标即可收藏": "Cliquez sur l’étoile à gauche d’une application pour l’ajouter aux favoris", "点击应用最左侧的星标，即可固定到收藏页签。": "Cliquez sur l’étoile la plus à gauche pour épingler l’application dans l’onglet Favoris.", "应用启动并产生过音频后，会自动归入这里。": "Les applications sont automatiquement classées ici après avoir produit du son.",
+        "未检测到": "Non détecté", "输出不可用": "Sortie indisponible", "恢复默认": "Rétablir les valeurs par défaut", "立即静音": "Couper maintenant", "取消静音": "Réactiver le son", "加入收藏": "Ajouter aux favoris", "取消收藏": "Retirer des favoris", "音量增强": "Amplification du volume", "15 分钟后静音": "Couper dans 15 minutes", "30 分钟后静音": "Couper dans 30 minutes", "取消定时静音": "Annuler la coupure programmée", "更多控制": "Plus de commandes",
+        "重新连接后自动恢复": "Restaurer automatiquement après reconnexion", "未连接": "Déconnecté", "没有检测到音频设备": "Aucun périphérique audio détecté", "输出控制": "Contrôle de sortie", "输入控制": "Contrôle d’entrée", "设为系统默认输出": "Définir comme sortie système par défaut", "设为系统默认输入": "Définir comme entrée système par défaut", "音频格式": "Format audio", "采样率": "Fréquence d’échantillonnage", "输入声道": "Canaux d’entrée", "输出声道": "Canaux de sortie", "连接信息": "Informations de connexion", "传输方式": "Transport", "制造商": "Fabricant", "设备 UID": "UID du périphérique", "内建设备": "Périphérique intégré", "蓝牙": "Bluetooth", "雷雳": "Thunderbolt", "聚合设备": "Périphérique agrégé", "虚拟设备": "Périphérique virtuel", "未知厂商": "Fabricant inconnu",
+        "音合流只申请真实声音控制所需的权限，音频不会保存或上传。": "AudioFlow ne demande que les autorisations nécessaires au contrôle audio réel. Le son n’est ni enregistré ni envoyé.", "用于发现正在发声的进程，并执行独立音量、静音、增强和输出路由。": "Permet de détecter les processus audio et de régler individuellement le volume, la coupure, l’amplification et le routage de sortie.", "登录 Mac 后自动启动音合流菜单栏控制器。": "Lance automatiquement le contrôleur AudioFlow dans la barre des menus après la connexion au Mac.", "等待系统批准": "En attente de l’autorisation du système", "当前不可用": "Indisponible", "设备枚举和系统主音量控制由 Core Audio 提供，不需要额外隐私权限。": "Core Audio fournit la détection des périphériques et le volume principal sans autorisation de confidentialité supplémentaire.",
+        "音合流提示": "Message AudioFlow", "知道了": "OK", "控制器页面": "Page du contrôleur", "打开声音控制器": "Ouvrir le contrôleur audio", "声音控制": "Contrôle audio", "设置…": "Réglages…",
+        "展开": "Développer", "收起": "Réduire", "已折叠": "Réduit", "已展开": "Développé", "上移": "Monter", "下移": "Descendre", "按住并上下拖动调整应用顺序": "Maintenez puis faites glisser verticalement pour réorganiser les applications", "拖动调整": "Faire glisser pour réorganiser", "的顺序": "ordre", "将": "Déplacer", "%@ 个应用": "%@ applications",
+        "音合流声环": "Anneau AudioFlow", "动态扬声器": "Haut-parleur dynamique", "音量柱": "Barres de volume", "百分比数字": "Pourcentage", "紧凑数字": "Nombre compact", "分段音量格": "Indicateur segmenté", "迷你进度条": "Mini barre de progression", "动态仪表": "Jauge dynamique",
+        "打开音合流": "Ouvrir AudioFlow", "打开系统与应用音量控制器": "Ouvrir le contrôleur du volume système et des applications", "请先在权限中心允许系统音频录制": "Autorisez d’abord l’enregistrement audio système dans le centre des autorisations",
+        "已允许，登录后音合流会在菜单栏启动。": "Autorisé. AudioFlow démarrera dans la barre des menus après la connexion.", "已提交申请，请前往系统设置的“登录项”完成批准。": "Demande envoyée. Approuvez-la dans Réglages Système > Ouverture.", "当前未申请登录时启动。": "Le lancement à l’ouverture de session n’a pas été demandé.", "当前尚未注册登录启动项。开启后会向 macOS 提交申请。": "Aucun élément d’ouverture n’est enregistré. Son activation enverra une demande à macOS.", "登录启动状态未知。": "L’état de l’élément d’ouverture est inconnu.",
+        "选择自定义主题背景": "Choisir un arrière-plan personnalisé", "选择一张会显示在液态玻璃下方的图片。": "Choisissez une image à afficher sous les surfaces Liquid Glass.", "无法读取所选图片，请选择有效的 PNG、JPEG、HEIC 或 TIFF 图片。": "Impossible de lire l’image. Choisissez un fichier PNG, JPEG, HEIC ou TIFF valide.", "自定义主题背景已更新": "Arrière-plan personnalisé mis à jour", "已移除自定义主题背景": "Arrière-plan personnalisé supprimé", "%@失败（%@）": "Échec de %@ (%@)",
+        "已允许登录时启动": "Lancement à l’ouverture de session autorisé", "登录启动项已申请，等待在系统设置中批准": "Élément d’ouverture demandé, en attente d’approbation dans Réglages Système", "已关闭登录时启动": "Lancement à l’ouverture de session désactivé", "登录启动服务不可用": "Service d’élément d’ouverture indisponible", "登录启动状态已更新": "État de lancement mis à jour", "无法修改登录启动项。": "Impossible de modifier l’élément d’ouverture.",
+        "当前输入设备不支持软件增益。": "Le périphérique d’entrée actuel ne prend pas en charge le gain logiciel.", "系统音频录制权限已可用": "L’accès à l’enregistrement audio système est disponible", "正在向 macOS 申请系统音频录制权限…": "Demande d’accès à l’audio système auprès de macOS…", "系统音频权限未获得。": "L’accès à l’audio système n’a pas été accordé.", "系统输出设备当前不可用": "Le périphérique de sortie système est indisponible", "未知设备": "Périphérique inconnu", "应用": "Application",
+        "Core Audio 已连接": "Core Audio connecté", "已取消收藏 %@": "%@ retiré des favoris", "已收藏 %@": "%@ ajouté aux favoris", "已调整 %@ 在%@中的顺序": "%@ réorganisé dans %@", "已拖动调整 %@ 在%@中的顺序": "%@ réorganisé par glissement dans %@", "已拖动调整 %@ 所在%@列表的顺序": "%@ réorganisé par glissement dans la liste %@",
+        "系统主音量已同步为 %@%%": "Volume principal synchronisé à %@ %%", "输入增益已同步": "Gain d’entrée synchronisé", "已切换系统输出设备：%@": "Sortie système changée : %@", "已切换系统输入设备：%@": "Entrée système changée : %@", "采样率已设置为 %@ Hz": "Fréquence d’échantillonnage réglée sur %@ Hz",
+        "已恢复应用的默认声音设置": "Réglages audio par défaut de l’application restaurés", "已静音全部正在发声的应用": "Toutes les applications en lecture ont été coupées", "已取消全部应用静音": "Le son de toutes les applications a été réactivé", "已设置 %@ 分钟后静音": "Coupure programmée dans %@ minutes", "已取消定时静音": "Coupure programmée annulée",
+        "%@ 当前未连接，请重新选择输出设备": "%@ est déconnecté. Choisissez un autre périphérique de sortie.", "正在实时处理 %@": "Traitement de %@ en temps réel", "%@ 已恢复系统直通": "%@ utilise de nouveau le passage direct du système", "无法控制 %@。": "Impossible de contrôler %@.",
+        "设置系统主音量": "Régler le volume principal", "设置麦克风输入增益": "Régler le gain du microphone", "静音麦克风": "Couper le microphone", "取消麦克风静音": "Réactiver le microphone", "静音系统输出": "Couper la sortie système", "取消系统静音": "Réactiver le son du système", "静音设备": "Couper le périphérique", "取消设备静音": "Réactiver le périphérique", "切换默认输出设备": "Changer la sortie par défaut", "切换系统提示音设备": "Changer le périphérique des alertes système", "切换默认输入设备": "Changer l’entrée par défaut", "设置采样率": "Régler la fréquence d’échantillonnage", "申请系统音频录制权限": "Demander l’accès à l’audio système", "启动应用音频处理": "Démarrer le traitement audio de l’application"
+    ]
+
+    private static let germanSupplement: [String: String] = [
+        "启动与菜单栏": "Start und Menüleiste", "主题与玻璃材质": "Thema und Glas", "系统授权状态": "Systemzugriff", "音合流偏好": "AudioFlow-Einstellungen", "所有设置仅保存在本机": "Alle Einstellungen bleiben auf diesem Mac",
+        "中文": "Chinesisch", "英文": "Englisch", "日文": "Japanisch", "法文": "Französisch", "德文": "Deutsch", "韩文": "Koreanisch", "简体中文": "Vereinfachtes Chinesisch", "日本語": "Japanisch", "Français": "Französisch", "Deutsch": "Deutsch", "한국어": "Koreanisch",
+        "启动": "Start", "登录时启动音合流": "AudioFlow bei Anmeldung starten", "菜单栏": "Menüleiste", "菜单栏图标": "Menüleistensymbol", "显示系统音量": "Systemlautstärke anzeigen", "音量显示样式": "Stil der Lautstärkeanzeige",
+        "选择音合流声环、动态扬声器或音量柱。": "AudioFlow-Ring, dynamischen Lautsprecher oder Lautstärkebalken auswählen.", "在菜单栏图标旁显示实时系统音量。": "Aktuelle Systemlautstärke neben dem Menüleistensymbol anzeigen.", "可选择数字、分段、进度条或动态仪表。": "Zahl, Segmente, Fortschrittsbalken oder dynamische Anzeige auswählen.",
+        "管理登录启动和菜单栏显示方式。": "Anmeldestart und Darstellung in der Menüleiste verwalten.", "选择主题，并控制系统原生液态玻璃。": "Thema auswählen und natives macOS Liquid Glass steuern.", "查看并申请声音控制所需的系统权限。": "Für die Audiosteuerung erforderliche Systemrechte prüfen und anfordern.",
+        "界面材质": "Oberflächenmaterial", "macOS 原生液态玻璃": "Natives macOS Liquid Glass", "浅色使用白色玻璃，深色使用黑色玻璃。": "Im hellen Modus wird weißes, im dunklen Modus schwarzes Glas verwendet.", "使用 macOS 原生液态玻璃": "Natives macOS Liquid Glass verwenden",
+        "支持 PNG、JPEG、HEIC 与 TIFF，图片会复制并保存在本机。": "Unterstützt PNG, JPEG, HEIC und TIFF. Das Bild wird kopiert und lokal gespeichert.", "尚未选择图片": "Kein Bild ausgewählt", "自定义背景已启用": "Eigener Hintergrund aktiviert",
+        "系统输出设备": "Systemausgabegerät", "系统主音量": "Systemhauptlautstärke", "设备与音量控制": "Geräte- und Lautstärkesteuerung", "未检测到设备": "Kein Gerät erkannt", "当前输出设备不支持由 Core Audio 调节系统音量": "Das aktuelle Ausgabegerät unterstützt keine Systemlautstärkeregelung über Core Audio",
+        "应用播放声音后会加入这里；暂停时保留，只有退出应用后才会消失。": "Apps erscheinen hier nach der Audiowiedergabe, bleiben bei Pause sichtbar und verschwinden erst beim Beenden.", "立即刷新": "Jetzt aktualisieren", "还没有收藏应用": "Noch keine Favoriten", "点击应用左侧星标即可收藏": "Stern links neben einer App anklicken, um sie zu favorisieren", "点击应用最左侧的星标，即可固定到收藏页签。": "Mit dem ganz linken Stern wird die App im Favoriten-Tab angeheftet.", "应用启动并产生过音频后，会自动归入这里。": "Apps werden hier automatisch eingeordnet, nachdem sie Audio ausgegeben haben.",
+        "未检测到": "Nicht erkannt", "输出不可用": "Ausgabe nicht verfügbar", "恢复默认": "Standard wiederherstellen", "立即静音": "Jetzt stummschalten", "取消静音": "Stummschaltung aufheben", "加入收藏": "Zu Favoriten hinzufügen", "取消收藏": "Aus Favoriten entfernen", "音量增强": "Lautstärkeverstärkung", "15 分钟后静音": "In 15 Minuten stummschalten", "30 分钟后静音": "In 30 Minuten stummschalten", "取消定时静音": "Zeitgesteuerte Stummschaltung abbrechen", "更多控制": "Weitere Steuerelemente",
+        "重新连接后自动恢复": "Nach erneutem Verbinden automatisch wiederherstellen", "未连接": "Getrennt", "没有检测到音频设备": "Keine Audiogeräte erkannt", "输出控制": "Ausgabesteuerung", "输入控制": "Eingabesteuerung", "设为系统默认输出": "Als Standardausgabe festlegen", "设为系统默认输入": "Als Standardeingabe festlegen", "音频格式": "Audioformat", "采样率": "Abtastrate", "输入声道": "Eingangskanäle", "输出声道": "Ausgangskanäle", "连接信息": "Verbindungsinformationen", "传输方式": "Übertragung", "制造商": "Hersteller", "设备 UID": "Geräte-UID", "内建设备": "Integriertes Gerät", "蓝牙": "Bluetooth", "雷雳": "Thunderbolt", "聚合设备": "Aggregiertes Gerät", "虚拟设备": "Virtuelles Gerät", "未知厂商": "Unbekannter Hersteller",
+        "音合流只申请真实声音控制所需的权限，音频不会保存或上传。": "AudioFlow fordert nur die für echte Audiosteuerung erforderlichen Rechte an. Audio wird weder gespeichert noch hochgeladen.", "用于发现正在发声的进程，并执行独立音量、静音、增强和输出路由。": "Erkennt aktive Audioprozesse und steuert Lautstärke, Stummschaltung, Verstärkung und Ausgaberouting pro App.", "登录 Mac 后自动启动音合流菜单栏控制器。": "Startet den AudioFlow-Menüleisten-Controller automatisch nach der Mac-Anmeldung.", "等待系统批准": "Warten auf Systemfreigabe", "当前不可用": "Nicht verfügbar", "设备枚举和系统主音量控制由 Core Audio 提供，不需要额外隐私权限。": "Geräteerkennung und Systemhauptlautstärke werden von Core Audio bereitgestellt und benötigen keine zusätzlichen Datenschutzrechte.",
+        "音合流提示": "AudioFlow-Hinweis", "知道了": "OK", "控制器页面": "Controller-Seite", "打开声音控制器": "Audio-Controller öffnen", "声音控制": "Audiosteuerung", "设置…": "Einstellungen…",
+        "展开": "Aufklappen", "收起": "Einklappen", "已折叠": "Eingeklappt", "已展开": "Aufgeklappt", "上移": "Nach oben", "下移": "Nach unten", "按住并上下拖动调整应用顺序": "Gedrückt halten und vertikal ziehen, um Apps neu zu ordnen", "拖动调整": "Zum Sortieren ziehen", "的顺序": "Reihenfolge", "将": "Verschieben", "%@ 个应用": "%@ Apps",
+        "音合流声环": "AudioFlow-Ring", "动态扬声器": "Dynamischer Lautsprecher", "音量柱": "Lautstärkebalken", "百分比数字": "Prozentwert", "紧凑数字": "Kompakte Zahl", "分段音量格": "Segmentanzeige", "迷你进度条": "Mini-Fortschrittsbalken", "动态仪表": "Dynamische Anzeige",
+        "打开音合流": "AudioFlow öffnen", "打开系统与应用音量控制器": "Controller für System- und App-Lautstärke öffnen", "请先在权限中心允许系统音频录制": "Zuerst die Systemaudioaufnahme im Berechtigungscenter erlauben",
+        "已允许，登录后音合流会在菜单栏启动。": "Erlaubt. AudioFlow startet nach der Anmeldung in der Menüleiste.", "已提交申请，请前往系统设置的“登录项”完成批准。": "Anfrage gesendet. In Systemeinstellungen > Anmeldeobjekte freigeben.", "当前未申请登录时启动。": "Der Start bei Anmeldung wurde nicht angefordert.", "当前尚未注册登录启动项。开启后会向 macOS 提交申请。": "Noch kein Anmeldeobjekt registriert. Beim Aktivieren wird eine Anfrage an macOS gesendet.", "登录启动状态未知。": "Status des Anmeldeobjekts ist unbekannt.",
+        "选择自定义主题背景": "Eigenen Themenhintergrund auswählen", "选择一张会显示在液态玻璃下方的图片。": "Ein Bild auswählen, das unter den Liquid-Glass-Flächen angezeigt wird.", "无法读取所选图片，请选择有效的 PNG、JPEG、HEIC 或 TIFF 图片。": "Das ausgewählte Bild konnte nicht gelesen werden. Bitte gültiges PNG-, JPEG-, HEIC- oder TIFF-Bild wählen.", "自定义主题背景已更新": "Eigener Themenhintergrund aktualisiert", "已移除自定义主题背景": "Eigener Themenhintergrund entfernt", "%@失败（%@）": "%@ fehlgeschlagen (%@)",
+        "已允许登录时启动": "Start bei Anmeldung erlaubt", "登录启动项已申请，等待在系统设置中批准": "Anmeldeobjekt angefordert; Freigabe in den Systemeinstellungen steht aus", "已关闭登录时启动": "Start bei Anmeldung deaktiviert", "登录启动服务不可用": "Anmeldeobjekt-Dienst nicht verfügbar", "登录启动状态已更新": "Status des Anmeldestarts aktualisiert", "无法修改登录启动项。": "Anmeldeobjekt konnte nicht geändert werden.",
+        "当前输入设备不支持软件增益。": "Das aktuelle Eingabegerät unterstützt keine Softwareverstärkung.", "系统音频录制权限已可用": "Zugriff auf Systemaudioaufnahme verfügbar", "正在向 macOS 申请系统音频录制权限…": "Systemaudiozugriff wird bei macOS angefordert…", "系统音频权限未获得。": "Systemaudiozugriff wurde nicht gewährt.", "系统输出设备当前不可用": "Das Systemausgabegerät ist derzeit nicht verfügbar", "未知设备": "Unbekanntes Gerät", "应用": "App",
+        "Core Audio 已连接": "Core Audio verbunden", "已取消收藏 %@": "%@ aus Favoriten entfernt", "已收藏 %@": "%@ zu Favoriten hinzugefügt", "已调整 %@ 在%@中的顺序": "%@ in %@ neu angeordnet", "已拖动调整 %@ 在%@中的顺序": "%@ durch Ziehen in %@ neu angeordnet", "已拖动调整 %@ 所在%@列表的顺序": "%@ durch Ziehen in der Liste %@ neu angeordnet",
+        "系统主音量已同步为 %@%%": "Systemhauptlautstärke auf %@ %% synchronisiert", "输入增益已同步": "Eingangsverstärkung synchronisiert", "已切换系统输出设备：%@": "Systemausgabe gewechselt: %@", "已切换系统输入设备：%@": "Systemeingabe gewechselt: %@", "采样率已设置为 %@ Hz": "Abtastrate auf %@ Hz gesetzt",
+        "已恢复应用的默认声音设置": "Standard-Audioeinstellungen der App wiederhergestellt", "已静音全部正在发声的应用": "Alle wiedergebenden Apps stummgeschaltet", "已取消全部应用静音": "Stummschaltung aller Apps aufgehoben", "已设置 %@ 分钟后静音": "Stummschaltung in %@ Minuten eingestellt", "已取消定时静音": "Zeitgesteuerte Stummschaltung abgebrochen",
+        "%@ 当前未连接，请重新选择输出设备": "%@ ist nicht verbunden. Bitte ein anderes Ausgabegerät wählen.", "正在实时处理 %@": "%@ wird in Echtzeit verarbeitet", "%@ 已恢复系统直通": "%@ verwendet wieder System-Durchleitung", "无法控制 %@。": "%@ kann nicht gesteuert werden.",
+        "设置系统主音量": "Systemhauptlautstärke einstellen", "设置麦克风输入增益": "Mikrofonverstärkung einstellen", "静音麦克风": "Mikrofon stummschalten", "取消麦克风静音": "Mikrofon aktivieren", "静音系统输出": "Systemausgabe stummschalten", "取消系统静音": "Systemton aktivieren", "静音设备": "Gerät stummschalten", "取消设备静音": "Gerät aktivieren", "切换默认输出设备": "Standardausgabe wechseln", "切换系统提示音设备": "Gerät für Systemhinweise wechseln", "切换默认输入设备": "Standardeingabe wechseln", "设置采样率": "Abtastrate einstellen", "申请系统音频录制权限": "Systemaudiozugriff anfordern", "启动应用音频处理": "App-Audioverarbeitung starten"
+    ]
+
+    private static let koreanSupplement: [String: String] = [
+        "启动与菜单栏": "실행 및 메뉴 막대", "主题与玻璃材质": "테마 및 유리", "系统授权状态": "시스템 권한", "音合流偏好": "오디오플로우 환경설정", "所有设置仅保存在本机": "모든 설정은 이 Mac에만 저장됩니다",
+        "中文": "중국어", "英文": "영어", "日文": "일본어", "法文": "프랑스어", "德文": "독일어", "韩文": "한국어", "简体中文": "중국어 간체", "日本語": "일본어", "Français": "프랑스어", "Deutsch": "독일어", "한국어": "한국어",
+        "启动": "실행", "登录时启动音合流": "로그인 시 오디오플로우 실행", "菜单栏": "메뉴 막대", "菜单栏图标": "메뉴 막대 아이콘", "显示系统音量": "시스템 음량 표시", "音量显示样式": "음량 표시 스타일",
+        "选择音合流声环、动态扬声器或音量柱。": "오디오플로우 링, 동적 스피커 또는 음량 막대를 선택합니다.", "在菜单栏图标旁显示实时系统音量。": "메뉴 막대 아이콘 옆에 실시간 시스템 음량을 표시합니다.", "可选择数字、分段、进度条或动态仪表。": "숫자, 구간, 진행 막대 또는 동적 게이지를 선택할 수 있습니다.",
+        "管理登录启动和菜单栏显示方式。": "로그인 시 실행 및 메뉴 막대 표시 방식을 관리합니다.", "选择主题，并控制系统原生液态玻璃。": "테마를 선택하고 macOS 기본 Liquid Glass를 제어합니다.", "查看并申请声音控制所需的系统权限。": "오디오 제어에 필요한 시스템 권한을 확인하고 요청합니다.",
+        "界面材质": "인터페이스 재질", "macOS 原生液态玻璃": "macOS 기본 Liquid Glass", "浅色使用白色玻璃，深色使用黑色玻璃。": "라이트 모드는 흰색 유리, 다크 모드는 검은색 유리를 사용합니다.", "使用 macOS 原生液态玻璃": "macOS 기본 Liquid Glass 사용",
+        "支持 PNG、JPEG、HEIC 与 TIFF，图片会复制并保存在本机。": "PNG, JPEG, HEIC, TIFF를 지원하며 이미지는 이 Mac에 복사해 저장합니다.", "尚未选择图片": "선택한 이미지 없음", "自定义背景已启用": "사용자 지정 배경 사용 중",
+        "系统输出设备": "시스템 출력 기기", "系统主音量": "시스템 기본 음량", "设备与音量控制": "기기 및 음량 제어", "未检测到设备": "감지된 기기 없음", "当前输出设备不支持由 Core Audio 调节系统音量": "현재 출력 기기는 Core Audio를 통한 시스템 음량 조절을 지원하지 않습니다",
+        "应用播放声音后会加入这里；暂停时保留，只有退出应用后才会消失。": "소리를 재생한 앱이 여기에 표시됩니다. 일시 정지해도 유지되며 앱을 종료할 때만 사라집니다.", "立即刷新": "지금 새로 고침", "还没有收藏应用": "즐겨찾는 앱 없음", "点击应用左侧星标即可收藏": "앱 왼쪽의 별을 클릭해 즐겨찾기에 추가", "点击应用最左侧的星标，即可固定到收藏页签。": "앱 가장 왼쪽의 별을 클릭하면 즐겨찾기 탭에 고정됩니다.", "应用启动并产生过音频后，会自动归入这里。": "실행 후 오디오를 재생한 앱은 자동으로 여기에 분류됩니다.",
+        "未检测到": "감지 안 됨", "输出不可用": "출력 사용 불가", "恢复默认": "기본값 복원", "立即静音": "지금 음소거", "取消静音": "음소거 해제", "加入收藏": "즐겨찾기에 추가", "取消收藏": "즐겨찾기에서 제거", "音量增强": "음량 증폭", "15 分钟后静音": "15분 후 음소거", "30 分钟后静音": "30분 후 음소거", "取消定时静音": "예약 음소거 취소", "更多控制": "추가 제어",
+        "重新连接后自动恢复": "다시 연결되면 자동 복원", "未连接": "연결 안 됨", "没有检测到音频设备": "감지된 오디오 기기 없음", "输出控制": "출력 제어", "输入控制": "입력 제어", "设为系统默认输出": "시스템 기본 출력으로 설정", "设为系统默认输入": "시스템 기본 입력으로 설정", "音频格式": "오디오 형식", "采样率": "샘플률", "输入声道": "입력 채널", "输出声道": "출력 채널", "连接信息": "연결 정보", "传输方式": "전송 방식", "制造商": "제조사", "设备 UID": "기기 UID", "内建设备": "내장 기기", "蓝牙": "Bluetooth", "雷雳": "Thunderbolt", "聚合设备": "통합 기기", "虚拟设备": "가상 기기", "未知厂商": "알 수 없는 제조사",
+        "音合流只申请真实声音控制所需的权限，音频不会保存或上传。": "오디오플로우는 실제 오디오 제어에 필요한 권한만 요청하며 오디오를 저장하거나 업로드하지 않습니다.", "用于发现正在发声的进程，并执行独立音量、静音、增强和输出路由。": "소리를 내는 프로세스를 감지하고 앱별 음량, 음소거, 증폭 및 출력 경로를 제어합니다.", "登录 Mac 后自动启动音合流菜单栏控制器。": "Mac 로그인 후 오디오플로우 메뉴 막대 컨트롤러를 자동으로 실행합니다.", "等待系统批准": "시스템 승인 대기 중", "当前不可用": "현재 사용할 수 없음", "设备枚举和系统主音量控制由 Core Audio 提供，不需要额外隐私权限。": "기기 검색과 시스템 기본 음량 제어는 Core Audio에서 제공하므로 추가 개인정보 권한이 필요하지 않습니다.",
+        "音合流提示": "오디오플로우 알림", "知道了": "확인", "控制器页面": "컨트롤러 페이지", "打开声音控制器": "오디오 컨트롤러 열기", "声音控制": "오디오 제어", "设置…": "설정…",
+        "展开": "펼치기", "收起": "접기", "已折叠": "접힘", "已展开": "펼침", "上移": "위로 이동", "下移": "아래로 이동", "按住并上下拖动调整应用顺序": "길게 누른 후 위아래로 드래그하여 앱 순서 변경", "拖动调整": "드래그하여 순서 변경", "的顺序": "순서", "将": "이동", "%@ 个应用": "%@개 앱",
+        "音合流声环": "오디오플로우 링", "动态扬声器": "동적 스피커", "音量柱": "음량 막대", "百分比数字": "백분율", "紧凑数字": "간단한 숫자", "分段音量格": "구간 음량계", "迷你进度条": "미니 진행 막대", "动态仪表": "동적 게이지",
+        "打开音合流": "오디오플로우 열기", "打开系统与应用音量控制器": "시스템 및 앱 음량 컨트롤러 열기", "请先在权限中心允许系统音频录制": "먼저 권한 센터에서 시스템 오디오 녹음을 허용하세요",
+        "已允许，登录后音合流会在菜单栏启动。": "허용됨. 로그인 후 오디오플로우가 메뉴 막대에서 실행됩니다.", "已提交申请，请前往系统设置的“登录项”完成批准。": "요청을 제출했습니다. 시스템 설정의 로그인 항목에서 승인하세요.", "当前未申请登录时启动。": "로그인 시 실행을 요청하지 않았습니다.", "当前尚未注册登录启动项。开启后会向 macOS 提交申请。": "등록된 로그인 항목이 없습니다. 켜면 macOS에 요청을 제출합니다.", "登录启动状态未知。": "로그인 항목 상태를 알 수 없습니다.",
+        "选择自定义主题背景": "사용자 지정 테마 배경 선택", "选择一张会显示在液态玻璃下方的图片。": "Liquid Glass 표면 아래에 표시할 이미지를 선택합니다.", "无法读取所选图片，请选择有效的 PNG、JPEG、HEIC 或 TIFF 图片。": "선택한 이미지를 읽을 수 없습니다. 올바른 PNG, JPEG, HEIC 또는 TIFF 이미지를 선택하세요.", "自定义主题背景已更新": "사용자 지정 테마 배경 업데이트됨", "已移除自定义主题背景": "사용자 지정 테마 배경 제거됨", "%@失败（%@）": "%@ 실패 (%@)",
+        "已允许登录时启动": "로그인 시 실행 허용됨", "登录启动项已申请，等待在系统设置中批准": "로그인 항목 요청됨. 시스템 설정에서 승인 대기 중", "已关闭登录时启动": "로그인 시 실행 꺼짐", "登录启动服务不可用": "로그인 항목 서비스를 사용할 수 없음", "登录启动状态已更新": "로그인 실행 상태 업데이트됨", "无法修改登录启动项。": "로그인 항목을 변경할 수 없습니다.",
+        "当前输入设备不支持软件增益。": "현재 입력 기기는 소프트웨어 게인을 지원하지 않습니다.", "系统音频录制权限已可用": "시스템 오디오 녹음 권한 사용 가능", "正在向 macOS 申请系统音频录制权限…": "macOS에 시스템 오디오 녹음 권한 요청 중…", "系统音频权限未获得。": "시스템 오디오 권한이 허용되지 않았습니다.", "系统输出设备当前不可用": "시스템 출력 기기를 현재 사용할 수 없습니다", "未知设备": "알 수 없는 기기", "应用": "앱",
+        "Core Audio 已连接": "Core Audio 연결됨", "已取消收藏 %@": "%@ 즐겨찾기 해제됨", "已收藏 %@": "%@ 즐겨찾기에 추가됨", "已调整 %@ 在%@中的顺序": "%@의 %@ 내 순서를 변경함", "已拖动调整 %@ 在%@中的顺序": "%@을(를) 드래그하여 %@ 내 순서를 변경함", "已拖动调整 %@ 所在%@列表的顺序": "%@을(를) 드래그하여 %@ 목록 내 순서를 변경함",
+        "系统主音量已同步为 %@%%": "시스템 기본 음량을 %@%%로 동기화함", "输入增益已同步": "입력 게인 동기화됨", "已切换系统输出设备：%@": "시스템 출력 전환됨: %@", "已切换系统输入设备：%@": "시스템 입력 전환됨: %@", "采样率已设置为 %@ Hz": "샘플률을 %@ Hz로 설정함",
+        "已恢复应用的默认声音设置": "앱 기본 오디오 설정 복원됨", "已静音全部正在发声的应用": "재생 중인 모든 앱 음소거됨", "已取消全部应用静音": "모든 앱 음소거 해제됨", "已设置 %@ 分钟后静音": "%@분 후 음소거 설정됨", "已取消定时静音": "예약 음소거 취소됨",
+        "%@ 当前未连接，请重新选择输出设备": "%@ 연결이 끊겼습니다. 다른 출력 기기를 선택하세요.", "正在实时处理 %@": "%@ 실시간 처리 중", "%@ 已恢复系统直通": "%@ 시스템 패스스루로 복원됨", "无法控制 %@。": "%@을(를) 제어할 수 없습니다.",
+        "设置系统主音量": "시스템 기본 음량 설정", "设置麦克风输入增益": "마이크 입력 게인 설정", "静音麦克风": "마이크 음소거", "取消麦克风静音": "마이크 음소거 해제", "静音系统输出": "시스템 출력 음소거", "取消系统静音": "시스템 음소거 해제", "静音设备": "기기 음소거", "取消设备静音": "기기 음소거 해제", "切换默认输出设备": "기본 출력 기기 전환", "切换系统提示音设备": "시스템 알림음 기기 전환", "切换默认输入设备": "기본 입력 기기 전환", "设置采样率": "샘플률 설정", "申请系统音频录制权限": "시스템 오디오 녹음 권한 요청", "启动应用音频处理": "앱 오디오 처리 시작"
+    ]
+
+    /// Each non-English table inherits the complete English coverage and then
+    /// overrides the high-frequency interface vocabulary with native copy.
+    /// This guarantees that no Chinese UI leaks while translations can still
+    /// be refined independently.
+    private static func makeLanguageMap(_ overrides: [String: String]) -> [String: String] {
+        english.merging(overrides) { _, new in new }
+    }
+}
+
+struct LText: View {
+    @Environment(\.appLanguage) private var language
+    private let source: String
+
+    init(_ source: String) { self.source = source }
+
+    var body: some View {
+        Text(verbatim: L10n.tr(source, language: language))
+    }
+}
+
+private struct AppLanguageEnvironmentKey: EnvironmentKey {
+    static let defaultValue = AppLanguage.simplifiedChinese
+}
+
+extension EnvironmentValues {
+    var appLanguage: AppLanguage {
+        get { self[AppLanguageEnvironmentKey.self] }
+        set { self[AppLanguageEnvironmentKey.self] = newValue }
+    }
+}

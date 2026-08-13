@@ -1,0 +1,26 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Show Swift version
+        run: swift --version
+
+      - name: Validate bundle metadata
+        run: plutil -lint Info.plist PackagingLocalizations/*/InfoPlist.strings
+
+      - name: Build release configuration
+        run: swift build -c release

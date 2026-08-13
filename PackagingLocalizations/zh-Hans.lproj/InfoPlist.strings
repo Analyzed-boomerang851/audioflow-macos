@@ -1,0 +1,3 @@
+"CFBundleDisplayName" = "音合流";
+"CFBundleName" = "音合流";
+"NSAudioCaptureUsageDescription" = "音合流需要访问系统音频，才能识别正在发声的应用并执行独立音量、静音和输出路由。音合流不会录制、保存或上传声音。";
