@@ -20,5 +20,5 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Simplified Chinese, English, Japanese, French, German, and Korean interfaces.
 - Drag-to-install DMG and ZIP distribution artifacts.
 
-[Unreleased]: https://github.com/Pandachan98/audioflow-macos/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/Pandachan98/audioflow-macos/releases/tag/v1.0.0
+[Unreleased]: https://github.com/starry-sky-chan/audioflow-macos/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/starry-sky-chan/audioflow-macos/releases/tag/v1.0.0

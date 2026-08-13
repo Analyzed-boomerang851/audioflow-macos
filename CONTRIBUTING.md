@@ -13,7 +13,7 @@ Thank you for helping improve AudioFlow.
 ## Development setup
 
 ```bash
-git clone https://github.com/Pandachan98/audioflow-macos.git
+git clone https://github.com/starry-sky-chan/audioflow-macos.git
 cd audioflow-macos
 swift build
 ```

@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Pandachan98/audioflow-macos/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Pandachan98/audioflow-macos?style=flat-square"></a>
-  <a href="https://github.com/Pandachan98/audioflow-macos/actions/workflows/build.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/Pandachan98/audioflow-macos/build.yml?branch=main&style=flat-square&label=build"></a>
+  <a href="https://github.com/starry-sky-chan/audioflow-macos/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/starry-sky-chan/audioflow-macos?style=flat-square"></a>
+  <a href="https://github.com/starry-sky-chan/audioflow-macos/actions/workflows/build.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/starry-sky-chan/audioflow-macos/build.yml?branch=main&style=flat-square&label=build"></a>
   <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-black?style=flat-square"></a>
   <img alt="macOS 14.2 or later" src="https://img.shields.io/badge/macOS-14.2%2B-black?style=flat-square&logo=apple">
   <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white">
@@ -52,7 +52,7 @@ System master volume and audio-device controls remain available without the audi
 
 ## Install
 
-1. Download `AudioFlow.dmg` from the [latest release](https://github.com/Pandachan98/audioflow-macos/releases/latest).
+1. Download `AudioFlow.dmg` from the [latest release](https://github.com/starry-sky-chan/audioflow-macos/releases/latest).
 2. Drag **AudioFlow** into **Applications**.
 3. Open AudioFlow and grant System Audio Recording permission when prompted.
 
@@ -61,7 +61,7 @@ The downloadable community build is ad-hoc signed and is not Apple-notarized. If
 ## Build from source
 
 ```bash
-git clone https://github.com/Pandachan98/audioflow-macos.git
+git clone https://github.com/starry-sky-chan/audioflow-macos.git
 cd audioflow-macos
 ./build-app.sh
 ```
