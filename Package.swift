@@ -29,6 +29,10 @@ let package = Package(
                 .linkedFramework("AVKit"),
                 .linkedFramework("ApplicationServices")
             ]
+        ),
+        .testTarget(
+            name: "ShenglanTests",
+            dependencies: ["Shenglan"]
         )
     ],
     swiftLanguageModes: [.v5]

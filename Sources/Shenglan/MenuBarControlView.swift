@@ -67,11 +67,15 @@ struct MenuBarControlView: View {
                         Text(L10n.tr("系统与应用声音", language: audio.language)).font(ShenglanTypography.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
+                    if audio.shouldShowDisableAllEqualizersAction {
+                        disableAllEqualizersButton(size: 34, radius: 10)
+                    }
                     Button { audio.refresh() } label: { Image(systemName: "arrow.clockwise") }
                         .buttonStyle(GlassIconButtonStyle(size: 34, radius: 10))
                     Button { openMain(.settings) } label: { Image(systemName: "gearshape.fill") }
                         .buttonStyle(GlassIconButtonStyle(size: 34, radius: 10))
                 }
+                .animation(ShenglanMotion.quick, value: audio.shouldShowDisableAllEqualizersAction)
 
                 VStack(spacing: 10) {
                     HStack {
@@ -135,12 +139,12 @@ struct MenuBarControlView: View {
                         ApplicationListTabBar(selection: $selectedTab, compact: true)
                             .environmentObject(audio)
 
-                        ScrollView {
+                        ScrollView(.vertical, showsIndicators: false) {
                             LazyVStack(spacing: 6) {
                                 menuApplicationContent
                             }
                         }
-                        .scrollIndicators(.automatic)
+                        .scrollIndicators(.hidden)
                         .frame(height: menuApplicationListHeight)
                     }
                 }
@@ -167,12 +171,16 @@ struct MenuBarControlView: View {
                 Text(L10n.tr("音合流", language: audio.language))
                     .font(ShenglanTypography.sectionTitle)
                 Spacer()
+                if audio.shouldShowDisableAllEqualizersAction {
+                    disableAllEqualizersButton(size: 28, radius: 8)
+                }
                 Button { openMain(.settings) } label: {
                     Image(systemName: "gearshape.fill")
                 }
                 .buttonStyle(GlassIconButtonStyle(size: 28, radius: 8))
                 .help(L10n.tr("设置", language: audio.language))
             }
+            .animation(ShenglanMotion.quick, value: audio.shouldShowDisableAllEqualizersAction)
 
             HStack(spacing: 7) {
                 Button { audio.setMasterMuted(!audio.masterMuted) } label: {
@@ -213,7 +221,7 @@ struct MenuBarControlView: View {
                 }
                 .frame(maxWidth: .infinity, minHeight: minimalApplicationListHeight)
             } else {
-                ScrollView {
+                ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(spacing: 0) {
                         ForEach(audio.orderedMinimalApplications) { app in
                             MinimalMenuBarApplicationRow(app: app)
@@ -221,12 +229,35 @@ struct MenuBarControlView: View {
                         }
                     }
                 }
-                .scrollIndicators(.automatic)
+                .scrollIndicators(.hidden)
                 .frame(height: minimalApplicationListHeight)
             }
         }
         .padding(10)
         .frame(width: 336)
+    }
+
+    private func disableAllEqualizersButton(size: CGFloat, radius: CGFloat) -> some View {
+        Button { audio.disableAllEqualizers() } label: {
+            HStack(spacing: 5) {
+                EqualizerOffMark(size: size <= 28 ? 16 : 18)
+                Text(L10n.tr("关闭EQ", language: audio.language))
+                    .font(size <= 28 ? ShenglanTypography.captionStrong : ShenglanTypography.control)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+        }
+        .buttonStyle(
+            GlassButtonStyle(
+                minHeight: size,
+                horizontalPadding: size <= 28 ? 7 : 9,
+                radius: radius
+            )
+        )
+        .foregroundStyle(.orange)
+        .accessibilityLabel(L10n.tr("关闭所有EQ", language: audio.language))
+        .help(L10n.tr("关闭总均衡器和所有应用均衡器，保留预设参数", language: audio.language))
+        .transition(.opacity.combined(with: .scale(scale: 0.92, anchor: .trailing)))
     }
 
     @ViewBuilder
@@ -440,7 +471,7 @@ private struct MinimalApplicationDragHandle: View {
                                 by: value.translation.height > 0 ? 1 : -1
                             )
                         }
-                        withAnimation(.interactiveSpring(response: 0.2, dampingFraction: 0.88)) {
+                        withAnimation(ShenglanMotion.settle) {
                             rowOffset = 0
                             isDragging = false
                         }

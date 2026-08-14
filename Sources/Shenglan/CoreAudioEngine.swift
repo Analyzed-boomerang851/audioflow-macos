@@ -34,6 +34,7 @@ enum CoreAudioBridge {
 
     static let system = AudioObjectID(kAudioObjectSystemObject)
     private static var processIdentityCache: [pid_t: ProcessIdentity] = [:]
+    private static var processExposureCache: [pid_t: Bool] = [:]
 
     static func address(_ selector: AudioObjectPropertySelector, scope: AudioObjectPropertyScope = kAudioObjectPropertyScopeGlobal, element: AudioObjectPropertyElement = kAudioObjectPropertyElementMain) -> AudioObjectPropertyAddress {
         AudioObjectPropertyAddress(mSelector: selector, mScope: scope, mElement: element)
@@ -172,7 +173,14 @@ enum CoreAudioBridge {
             livePIDs.insert(pid)
             let reportedBundleID = string(object: objectID, selector: kAudioProcessPropertyBundleID) ?? ""
             let app = NSRunningApplication(processIdentifier: pid)
-            guard shouldExposeProcess(pid: pid, app: app, reportedBundleID: reportedBundleID) else { return nil }
+            let shouldExpose: Bool
+            if let cached = processExposureCache[pid] {
+                shouldExpose = cached
+            } else {
+                shouldExpose = shouldExposeProcess(pid: pid, app: app, reportedBundleID: reportedBundleID)
+                processExposureCache[pid] = shouldExpose
+            }
+            guard shouldExpose else { return nil }
             let identity: ProcessIdentity
             if let cached = processIdentityCache[pid] {
                 identity = cached
@@ -194,6 +202,7 @@ enum CoreAudioBridge {
             return lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
         }
         processIdentityCache = processIdentityCache.filter { livePIDs.contains($0.key) }
+        processExposureCache = processExposureCache.filter { livePIDs.contains($0.key) }
         return result
     }
 
@@ -465,6 +474,39 @@ enum CoreAudioBridge {
     }
 }
 
+private struct RuntimeRefreshRequest {
+    let force: Bool
+    let topologyDue: Bool
+    let devices: [AudioDeviceModel]
+    let connectedUIDs: Set<String>
+    let preferredOutputUID: String?
+    let preferredInputUID: String?
+    let selectedOutputID: AudioObjectID
+    let selectedInputID: AudioObjectID
+    let masterWriteSequence: UInt64
+    let inputWriteSequence: UInt64
+}
+
+private struct RuntimeRefreshSnapshot {
+    let force: Bool
+    let topologyRefreshed: Bool
+    let devices: [AudioDeviceModel]
+    let connectedUIDs: Set<String>
+    let newlyAvailableUIDs: Set<String>
+    let outputID: AudioObjectID
+    let inputID: AudioObjectID
+    let outputVolume: Double?
+    let outputMuted: Bool?
+    let inputVolume: Double?
+    let inputMuted: Bool?
+    let outputSupportsVolume: Bool?
+    let inputSupportsVolume: Bool?
+    let outputLatencyMilliseconds: Double?
+    let loginItemStatus: SMAppService.Status?
+    let masterWriteSequence: UInt64
+    let inputWriteSequence: UInt64
+}
+
 @MainActor
 final class AudioController: ObservableObject {
     @Published var devices: [AudioDeviceModel] = []
@@ -475,6 +517,10 @@ final class AudioController: ObservableObject {
     @Published var inputMuted = false
     @Published var selectedOutputID = AudioObjectID(kAudioObjectUnknown)
     @Published var selectedInputID = AudioObjectID(kAudioObjectUnknown)
+    @Published private(set) var selectedOutputSupportsVolume = false
+    @Published private(set) var selectedInputSupportsVolume = false
+    @Published private(set) var outputLatencyMilliseconds = 0.0
+    @Published private(set) var deviceRuntimeStates: [AudioObjectID: AudioDeviceRuntimeState] = [:]
     @Published var theme: ThemeChoice = .system {
         didSet {
             UserDefaults.standard.set(theme.rawValue, forKey: Self.themeKey)
@@ -492,7 +538,8 @@ final class AudioController: ObservableObject {
     @Published var selectedSection: ControllerSection = .mixer
     @Published var statusMessage = ""
     @Published var errorMessage: String?
-    @Published var loginItemEnabled = SMAppService.mainApp.status == .enabled
+    @Published var loginItemEnabled = false
+    @Published private(set) var loginItemStatus: SMAppService.Status = .notRegistered
     @Published var menuBarIcon: MenuBarIconChoice = .waveform {
         didSet { UserDefaults.standard.set(menuBarIcon.rawValue, forKey: Self.menuBarIconKey) }
     }
@@ -542,15 +589,33 @@ final class AudioController: ObservableObject {
     @Published private(set) var applicationOrders: [String: [String]] = [:]
     @Published private(set) var minimalApplicationOrder: [String] = []
     @Published private(set) var collapsedApplicationGroups = Set<String>()
+    @Published private(set) var masterEqualizer = EqualizerSettings()
+    @Published private(set) var applicationEqualizers: [String: EqualizerSettings] = [:]
+
+    var hasAnyEqualizerEnabled: Bool {
+        EqualizerBatchState.hasEnabled(
+            master: masterEqualizer,
+            applications: applicationEqualizers
+        )
+    }
+
+    var shouldShowDisableAllEqualizersAction: Bool {
+        EqualizerBatchState.shouldShowDisableAllAction(
+            master: masterEqualizer,
+            currentApplications: runningApplications.map(applicationEqualizer(for:))
+        )
+    }
 
     private let processAudioManager = ProcessAudioGainManager()
     private let processScanQueue = DispatchQueue(label: "com.starry.shenglan.process-scan", qos: .utility)
+    private let runtimeReadQueue = DispatchQueue(label: "com.starry.shenglan.runtime-read", qos: .userInitiated)
     private let deviceWriteQueue = DispatchQueue(label: "com.starry.shenglan.device-volume", qos: .userInteractive)
     private var refreshTimer: Timer?
     private var processByID: [AudioObjectID: AudioProcessModel] = [:]
     private var pendingProcessingWork: [AudioObjectID: DispatchWorkItem] = [:]
     private var lastProcessingApply: [AudioObjectID: CFAbsoluteTime] = [:]
     private var timedMuteWork: [AudioObjectID: DispatchWorkItem] = [:]
+    private var equalizerPersistenceWork: DispatchWorkItem?
     private var activeUserInteractions = 0
     private var connectedUIDs = Set<String>()
     private var preferredOutputUID: String?
@@ -558,9 +623,15 @@ final class AudioController: ObservableObject {
     private var lastTopologyRefresh = -Double.infinity
     private var lastProcessRefresh = -Double.infinity
     private var processRefreshInFlight = false
+    private var processRefreshPendingForce = false
+    private var runtimeRefreshInFlight = false
+    private var runtimeRefreshPendingForce = false
+    private var deviceRuntimeRefreshesInFlight = Set<AudioObjectID>()
     private var audioOperationsInFlight = 0
     private var masterVolumeWriteSequence: UInt64 = 0
     private var inputVolumeWriteSequence: UInt64 = 0
+    private var outputSelectionSequence: UInt64 = 0
+    private var inputSelectionSequence: UInt64 = 0
     private var systemThemeObserver: NSObjectProtocol?
     private var applicationActivationObserver: NSObjectProtocol?
 
@@ -584,8 +655,12 @@ final class AudioController: ObservableObject {
     private static let applicationOrdersKey = "applicationOrders.v1"
     private static let minimalApplicationOrderKey = "minimalApplicationOrder.v1"
     private static let collapsedApplicationGroupsKey = "collapsedApplicationGroups.v1"
+    private static let masterEqualizerKey = "masterEqualizer.v1"
+    private static let applicationEqualizersKey = "applicationEqualizers.v1"
 
     init() {
+        loginItemStatus = SMAppService.mainApp.status
+        loginItemEnabled = loginItemStatus == .enabled
         if let value = UserDefaults.standard.string(forKey: Self.languageKey),
            let savedLanguage = AppLanguage(rawValue: value) {
             language = savedLanguage
@@ -642,6 +717,34 @@ final class AudioController: ObservableObject {
            let saved = try? JSONDecoder().decode([String: [String]].self, from: data) {
             applicationOrders = saved
         }
+        if let data = UserDefaults.standard.data(forKey: Self.masterEqualizerKey),
+           var saved = try? JSONDecoder().decode(EqualizerSettings.self, from: data) {
+            saved.normalize()
+            masterEqualizer = saved
+        }
+        if let data = UserDefaults.standard.data(forKey: Self.applicationEqualizersKey),
+           let saved = try? JSONDecoder().decode([String: EqualizerSettings].self, from: data) {
+            applicationEqualizers = saved.mapValues { value in
+                var normalized = value
+                normalized.normalize()
+                return normalized
+            }
+        }
+        // Older builds allowed both layers to remain active. On first launch
+        // after the exclusivity change, preserve the visible master choice and
+        // turn off app stages. Future user actions persist whichever layer was
+        // activated most recently through the centralized update methods.
+        if masterEqualizer.isEnabled,
+           applicationEqualizers.values.contains(where: \.isEnabled) {
+            applicationEqualizers = applicationEqualizers.mapValues { value in
+                var disabled = value
+                disabled.isEnabled = false
+                return disabled
+            }
+            if let data = try? JSONEncoder().encode(applicationEqualizers) {
+                UserDefaults.standard.set(data, forKey: Self.applicationEqualizersKey)
+            }
+        }
         preferredOutputUID = UserDefaults.standard.string(forKey: Self.preferredOutputUIDKey)
         preferredInputUID = UserDefaults.standard.string(forKey: Self.preferredInputUIDKey)
         if let data = UserDefaults.standard.data(forKey: Self.rememberedDevicesKey),
@@ -672,6 +775,7 @@ final class AudioController: ObservableObject {
     }
 
     deinit {
+        equalizerPersistenceWork?.cancel()
         refreshTimer?.invalidate()
         if let systemThemeObserver {
             DistributedNotificationCenter.default().removeObserver(systemThemeObserver)
@@ -779,18 +883,10 @@ final class AudioController: ObservableObject {
     var inputDevices: [AudioDeviceModel] { devices.filter(\.isInput) }
     var selectedOutput: AudioDeviceModel? { devices.first { $0.id == selectedOutputID } }
     var selectedInput: AudioDeviceModel? { devices.first { $0.id == selectedInputID } }
-    var selectedOutputSupportsVolume: Bool {
-        selectedOutputID != kAudioObjectUnknown && CoreAudioBridge.supportsVolume(device: selectedOutputID, scope: kAudioDevicePropertyScopeOutput)
-    }
-    var selectedInputSupportsVolume: Bool {
-        selectedInputID != kAudioObjectUnknown && CoreAudioBridge.supportsVolume(device: selectedInputID, scope: kAudioDevicePropertyScopeInput)
-    }
     // Applications remain visible after pausing and leave only when their host
     // process exits. `isRunningOutput` now represents row status, not visibility.
     var runningApplications: [ApplicationMixState] { applications }
     var activeProcessingCount: Int { applications.filter(\.processingActive).count }
-    var outputLatencyMilliseconds: Double { selectedOutput.map { CoreAudioBridge.outputLatencyMilliseconds(device: $0.id) } ?? 0 }
-    var loginItemStatus: SMAppService.Status { SMAppService.mainApp.status }
     var visibleApplications: [ApplicationMixState] { applications }
     var unavailableRememberedDevices: [RememberedAudioDevice] {
         let liveKeys = Set(devices.map {
@@ -830,6 +926,215 @@ final class AudioController: ObservableObject {
         let bundleID = app.bundleID.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if !bundleID.isEmpty { return "bundle:\(bundleID)" }
         return "name:\(app.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())"
+    }
+
+    func applicationEqualizer(for app: ApplicationMixState) -> EqualizerSettings {
+        applicationEqualizer(forKey: applicationPreferenceKey(for: app))
+    }
+
+    func applicationEqualizer(forKey key: String) -> EqualizerSettings {
+        applicationEqualizers[key] ?? EqualizerSettings()
+    }
+
+    func disableAllEqualizers() {
+        guard hasAnyEqualizerEnabled else { return }
+
+        EqualizerBatchState.disableAll(
+            master: &masterEqualizer,
+            applications: &applicationEqualizers
+        )
+        equalizerPersistenceWork?.cancel()
+        equalizerPersistenceWork = nil
+        persistEqualizers()
+
+        for app in applications {
+            scheduleApplicationProcessing(id: app.id, immediate: true)
+        }
+        statusMessage = L10n.tr("已关闭所有EQ")
+    }
+
+    func setMasterEqualizerEnabled(_ enabled: Bool) {
+        updateMasterEqualizer(immediate: true) { $0.isEnabled = enabled }
+        statusMessage = L10n.tr(enabled ? "总均衡器已开启" : "总均衡器已关闭")
+    }
+
+    func setMasterEqualizerPreset(_ preset: EqualizerPreset) {
+        updateMasterEqualizer(immediate: true) { $0.apply(preset) }
+        statusMessage = L10n.format("总均衡器已切换为 %@", preset.title)
+    }
+
+    func resetMasterEqualizer() {
+        let presetTitle = masterEqualizer.preset.title
+        updateMasterEqualizer(immediate: true) { $0.resetCurrentPreset() }
+        statusMessage = L10n.format("总均衡器的%@已重置", presetTitle)
+    }
+
+    func setMasterEqualizerBandGain(index: Int, gainDB: Double) {
+        guard EqualizerSettings.bandFrequencies.indices.contains(index) else { return }
+        updateMasterEqualizer { settings in
+            settings.prepareCurrentPresetForEditing()
+            settings.bandGainsDB[index] = min(max(gainDB, EqualizerSettings.gainRange.lowerBound), EqualizerSettings.gainRange.upperBound)
+            settings.saveCurrentPresetProfile()
+        }
+    }
+
+    func setMasterEqualizerPreamp(_ preampDB: Double) {
+        updateMasterEqualizer { settings in
+            settings.prepareCurrentPresetForEditing()
+            settings.preampDB = min(max(preampDB, EqualizerSettings.preampRange.lowerBound), EqualizerSettings.preampRange.upperBound)
+            settings.saveCurrentPresetProfile()
+        }
+    }
+
+    func setMasterEqualizerReverbMix(_ wetMix: Double) {
+        updateMasterEqualizer { settings in
+            applyReverbMix(wetMix, to: &settings)
+        }
+    }
+
+    func setMasterEqualizerStereoBalance(_ balance: Double) {
+        updateMasterEqualizer { settings in
+            settings.prepareCurrentPresetForEditing()
+            settings.stereoBalance = min(max(balance, -1), 1)
+            settings.saveCurrentPresetProfile()
+        }
+    }
+
+    func setApplicationEqualizerEnabled(key: String, enabled: Bool) {
+        updateApplicationEqualizer(key: key, immediate: true) { $0.isEnabled = enabled }
+        statusMessage = L10n.tr(enabled ? "应用均衡器已开启" : "应用均衡器已关闭")
+    }
+
+    func setApplicationEqualizerPreset(key: String, preset: EqualizerPreset) {
+        updateApplicationEqualizer(key: key, immediate: true) { $0.apply(preset) }
+        statusMessage = L10n.format("应用均衡器已切换为 %@", preset.title)
+    }
+
+    func resetApplicationEqualizer(key: String) {
+        let presetTitle = applicationEqualizer(forKey: key).preset.title
+        updateApplicationEqualizer(key: key, immediate: true) { $0.resetCurrentPreset() }
+        statusMessage = L10n.format("应用均衡器的%@已重置", presetTitle)
+    }
+
+    func setApplicationEqualizerBandGain(key: String, index: Int, gainDB: Double) {
+        guard EqualizerSettings.bandFrequencies.indices.contains(index) else { return }
+        updateApplicationEqualizer(key: key) { settings in
+            settings.prepareCurrentPresetForEditing()
+            settings.bandGainsDB[index] = min(max(gainDB, EqualizerSettings.gainRange.lowerBound), EqualizerSettings.gainRange.upperBound)
+            settings.saveCurrentPresetProfile()
+        }
+    }
+
+    func setApplicationEqualizerPreamp(key: String, preampDB: Double) {
+        updateApplicationEqualizer(key: key) { settings in
+            settings.prepareCurrentPresetForEditing()
+            settings.preampDB = min(max(preampDB, EqualizerSettings.preampRange.lowerBound), EqualizerSettings.preampRange.upperBound)
+            settings.saveCurrentPresetProfile()
+        }
+    }
+
+    func setApplicationEqualizerReverbMix(key: String, wetMix: Double) {
+        updateApplicationEqualizer(key: key) { settings in
+            applyReverbMix(wetMix, to: &settings)
+        }
+    }
+
+    func setApplicationEqualizerStereoBalance(key: String, balance: Double) {
+        updateApplicationEqualizer(key: key) { settings in
+            settings.prepareCurrentPresetForEditing()
+            settings.stereoBalance = min(max(balance, -1), 1)
+            settings.saveCurrentPresetProfile()
+        }
+    }
+
+    private func applyReverbMix(_ wetMix: Double, to settings: inout EqualizerSettings) {
+        settings.prepareCurrentPresetForEditing()
+        let clampedMix = min(max(wetMix, 0), 0.60)
+        if settings.reverb.wetMix <= 0.001, clampedMix > 0.001 {
+            settings.reverb = EqualizerReverbSettings(
+                wetMix: clampedMix,
+                roomSize: 0.55,
+                damping: 0.50,
+                preDelayMS: 18,
+                stereoWidth: 0.72
+            )
+        } else {
+            settings.reverb.wetMix = clampedMix
+        }
+        settings.saveCurrentPresetProfile()
+    }
+
+    private func updateMasterEqualizer(
+        immediate: Bool = false,
+        _ edit: (inout EqualizerSettings) -> Void
+    ) {
+        var settings = masterEqualizer
+        edit(&settings)
+        settings.normalize()
+        if settings.isEnabled {
+            applicationEqualizers = applicationEqualizers.mapValues { value in
+                var disabled = value
+                disabled.isEnabled = false
+                return disabled
+            }
+        }
+        masterEqualizer = settings
+        if immediate {
+            equalizerPersistenceWork?.cancel()
+            equalizerPersistenceWork = nil
+            persistEqualizers()
+        } else {
+            scheduleEqualizerPersistence()
+        }
+        for app in applications {
+            scheduleApplicationProcessing(id: app.id, immediate: immediate)
+        }
+    }
+
+    private func updateApplicationEqualizer(
+        key: String,
+        immediate: Bool = false,
+        _ edit: (inout EqualizerSettings) -> Void
+    ) {
+        var settings = applicationEqualizers[key] ?? EqualizerSettings()
+        edit(&settings)
+        settings.normalize()
+        let disabledMaster = settings.isEnabled && masterEqualizer.isEnabled
+        if disabledMaster {
+            masterEqualizer.isEnabled = false
+        }
+        applicationEqualizers[key] = settings
+        if immediate {
+            equalizerPersistenceWork?.cancel()
+            equalizerPersistenceWork = nil
+            persistEqualizers()
+        } else {
+            scheduleEqualizerPersistence()
+        }
+        for app in applications {
+            if disabledMaster || applicationPreferenceKey(for: app) == key {
+                scheduleApplicationProcessing(id: app.id, immediate: immediate)
+            }
+        }
+    }
+
+    private func scheduleEqualizerPersistence() {
+        equalizerPersistenceWork?.cancel()
+        let work = DispatchWorkItem { [weak self] in
+            self?.persistEqualizers()
+            self?.equalizerPersistenceWork = nil
+        }
+        equalizerPersistenceWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+    }
+
+    private func persistEqualizers() {
+        if let data = try? JSONEncoder().encode(masterEqualizer) {
+            UserDefaults.standard.set(data, forKey: Self.masterEqualizerKey)
+        }
+        if let data = try? JSONEncoder().encode(applicationEqualizers) {
+            UserDefaults.standard.set(data, forKey: Self.applicationEqualizersKey)
+        }
     }
 
     func minimalApplicationOrderKey(for app: ApplicationMixState) -> String {
@@ -1076,72 +1381,196 @@ final class AudioController: ObservableObject {
         let now = CFAbsoluteTimeGetCurrent()
         let topologyDue = force || now - lastTopologyRefresh >= 2.0
         let processesDue = force || now - lastProcessRefresh >= 0.9
-        var refreshedDevices = devices
-        var newlyAvailableUIDs = Set<String>()
-
-        if topologyDue {
-            lastTopologyRefresh = now
-            refreshedDevices = CoreAudioBridge.devices()
-            let refreshedUIDs = Set(refreshedDevices.map(\.uid))
-            newlyAvailableUIDs = refreshedUIDs.subtracting(connectedUIDs)
-            let isInitialScan = connectedUIDs.isEmpty
-
-            if let preferredOutputUID,
-               let preferred = refreshedDevices.first(where: { $0.uid == preferredOutputUID && $0.isOutput }),
-               !preferred.isDefaultOutput,
-               isInitialScan || newlyAvailableUIDs.contains(preferredOutputUID) {
-                try? CoreAudioBridge.setDefaultOutput(preferred.id)
-                refreshedDevices = CoreAudioBridge.devices()
-            }
-            if let preferredInputUID,
-               let preferred = refreshedDevices.first(where: { $0.uid == preferredInputUID && $0.isInput }),
-               !preferred.isDefaultInput,
-               isInitialScan || newlyAvailableUIDs.contains(preferredInputUID) {
-                try? CoreAudioBridge.setDefaultInput(preferred.id)
-                refreshedDevices = CoreAudioBridge.devices()
-            }
-            connectedUIDs = Set(refreshedDevices.map(\.uid))
-            if force || refreshedDevices != devices { devices = refreshedDevices }
-
-            let defaultOutput = refreshedDevices.first(where: \.isDefaultOutput)?.id ?? refreshedDevices.first(where: \.isOutput)?.id ?? kAudioObjectUnknown
-            let defaultInput = refreshedDevices.first(where: \.isDefaultInput)?.id ?? refreshedDevices.first(where: \.isInput)?.id ?? kAudioObjectUnknown
-            let previousOutput = selectedOutputID
-            if selectedOutputID != defaultOutput { selectedOutputID = defaultOutput }
-            if selectedInputID != defaultInput { selectedInputID = defaultInput }
-            if previousOutput != kAudioObjectUnknown, previousOutput != defaultOutput {
-                for app in applications where app.processingActive && app.routeDeviceUID == nil {
-                    scheduleApplicationProcessing(id: app.id, immediate: true)
-                }
-            }
-        }
-
-        let defaultOutput = selectedOutputID
-        let defaultInput = selectedInputID
-
-        if defaultOutput != kAudioObjectUnknown {
-            let systemVolume = CoreAudioBridge.masterVolume(device: defaultOutput)
-            let systemMuted = CoreAudioBridge.mute(device: defaultOutput)
-            if abs(systemVolume - masterVolume) > 0.002 { masterVolume = systemVolume }
-            if systemMuted != masterMuted { masterMuted = systemMuted }
-        }
-        if defaultInput != kAudioObjectUnknown {
-            let systemInputVolume = CoreAudioBridge.inputVolume(device: defaultInput)
-            let systemInputMuted = CoreAudioBridge.mute(device: defaultInput, scope: kAudioDevicePropertyScopeInput)
-            if abs(systemInputVolume - inputVolume) > 0.002 { inputVolume = systemInputVolume }
-            if systemInputMuted != inputMuted { inputMuted = systemInputMuted }
-        }
-        if topologyDue && (force || !newlyAvailableUIDs.isEmpty) {
-            if let output = refreshedDevices.first(where: \.isDefaultOutput) { remember(output, usedAsOutput: true, usedAsInput: false) }
-            if let input = refreshedDevices.first(where: \.isDefaultInput) { remember(input, usedAsOutput: false, usedAsInput: true) }
-        }
         if processesDue {
             lastProcessRefresh = now
             refreshProcesses(force: force)
         }
-        if topologyDue {
-            let currentLoginItemEnabled = SMAppService.mainApp.status == .enabled
-            if currentLoginItemEnabled != loginItemEnabled { loginItemEnabled = currentLoginItemEnabled }
+        scheduleRuntimeRefresh(force: force, topologyDue: topologyDue, now: now)
+    }
+
+    private func scheduleRuntimeRefresh(force: Bool, topologyDue: Bool, now: CFAbsoluteTime) {
+        if runtimeRefreshInFlight {
+            if force || topologyDue { runtimeRefreshPendingForce = true }
+            return
         }
+
+        runtimeRefreshInFlight = true
+        if topologyDue { lastTopologyRefresh = now }
+        let request = RuntimeRefreshRequest(
+            force: force,
+            topologyDue: topologyDue,
+            devices: devices,
+            connectedUIDs: connectedUIDs,
+            preferredOutputUID: preferredOutputUID,
+            preferredInputUID: preferredInputUID,
+            selectedOutputID: selectedOutputID,
+            selectedInputID: selectedInputID,
+            masterWriteSequence: masterVolumeWriteSequence,
+            inputWriteSequence: inputVolumeWriteSequence
+        )
+
+        runtimeReadQueue.async { [weak self] in
+            var refreshedDevices = request.devices
+            var newlyAvailableUIDs = Set<String>()
+
+            if request.topologyDue {
+                refreshedDevices = CoreAudioBridge.devices()
+                let refreshedUIDs = Set(refreshedDevices.map(\.uid))
+                newlyAvailableUIDs = refreshedUIDs.subtracting(request.connectedUIDs)
+                let isInitialScan = request.connectedUIDs.isEmpty
+
+                if let preferredOutputUID = request.preferredOutputUID,
+                   let preferred = refreshedDevices.first(where: { $0.uid == preferredOutputUID && $0.isOutput }),
+                   !preferred.isDefaultOutput,
+                   isInitialScan || newlyAvailableUIDs.contains(preferredOutputUID) {
+                    try? CoreAudioBridge.setDefaultOutput(preferred.id)
+                    refreshedDevices = CoreAudioBridge.devices()
+                }
+                if let preferredInputUID = request.preferredInputUID,
+                   let preferred = refreshedDevices.first(where: { $0.uid == preferredInputUID && $0.isInput }),
+                   !preferred.isDefaultInput,
+                   isInitialScan || newlyAvailableUIDs.contains(preferredInputUID) {
+                    try? CoreAudioBridge.setDefaultInput(preferred.id)
+                    refreshedDevices = CoreAudioBridge.devices()
+                }
+            }
+
+            let outputID = request.topologyDue
+                ? refreshedDevices.first(where: \.isDefaultOutput)?.id
+                    ?? refreshedDevices.first(where: \.isOutput)?.id
+                    ?? kAudioObjectUnknown
+                : request.selectedOutputID
+            let inputID = request.topologyDue
+                ? refreshedDevices.first(where: \.isDefaultInput)?.id
+                    ?? refreshedDevices.first(where: \.isInput)?.id
+                    ?? kAudioObjectUnknown
+                : request.selectedInputID
+
+            let snapshot = RuntimeRefreshSnapshot(
+                force: request.force,
+                topologyRefreshed: request.topologyDue,
+                devices: refreshedDevices,
+                connectedUIDs: request.topologyDue ? Set(refreshedDevices.map(\.uid)) : request.connectedUIDs,
+                newlyAvailableUIDs: newlyAvailableUIDs,
+                outputID: outputID,
+                inputID: inputID,
+                outputVolume: outputID == kAudioObjectUnknown ? nil : CoreAudioBridge.masterVolume(device: outputID),
+                outputMuted: outputID == kAudioObjectUnknown ? nil : CoreAudioBridge.mute(device: outputID),
+                inputVolume: inputID == kAudioObjectUnknown ? nil : CoreAudioBridge.inputVolume(device: inputID),
+                inputMuted: inputID == kAudioObjectUnknown ? nil : CoreAudioBridge.mute(device: inputID, scope: kAudioDevicePropertyScopeInput),
+                outputSupportsVolume: request.topologyDue && outputID != kAudioObjectUnknown
+                    ? CoreAudioBridge.supportsVolume(device: outputID, scope: kAudioDevicePropertyScopeOutput)
+                    : nil,
+                inputSupportsVolume: request.topologyDue && inputID != kAudioObjectUnknown
+                    ? CoreAudioBridge.supportsVolume(device: inputID, scope: kAudioDevicePropertyScopeInput)
+                    : nil,
+                outputLatencyMilliseconds: request.topologyDue && outputID != kAudioObjectUnknown
+                    ? CoreAudioBridge.outputLatencyMilliseconds(device: outputID)
+                    : nil,
+                loginItemStatus: request.topologyDue ? SMAppService.mainApp.status : nil,
+                masterWriteSequence: request.masterWriteSequence,
+                inputWriteSequence: request.inputWriteSequence
+            )
+            DispatchQueue.main.async { [weak self] in
+                self?.applyRuntimeSnapshot(snapshot)
+            }
+        }
+    }
+
+    private func applyRuntimeSnapshot(_ snapshot: RuntimeRefreshSnapshot) {
+        runtimeRefreshInFlight = false
+        guard activeUserInteractions == 0 && audioOperationsInFlight == 0 else {
+            if snapshot.topologyRefreshed { lastTopologyRefresh = -Double.infinity }
+            runtimeRefreshPendingForce = runtimeRefreshPendingForce || snapshot.force
+            return
+        }
+
+        if snapshot.topologyRefreshed {
+            let previousOutput = selectedOutputID
+            connectedUIDs = snapshot.connectedUIDs
+            if snapshot.force || snapshot.devices != devices { devices = snapshot.devices }
+            let liveDeviceIDs = Set(snapshot.devices.map(\.id))
+            if deviceRuntimeStates.keys.contains(where: { !liveDeviceIDs.contains($0) }) {
+                deviceRuntimeStates = deviceRuntimeStates.filter { liveDeviceIDs.contains($0.key) }
+            }
+            if selectedOutputID != snapshot.outputID { selectedOutputID = snapshot.outputID }
+            if selectedInputID != snapshot.inputID { selectedInputID = snapshot.inputID }
+            if let supported = snapshot.outputSupportsVolume,
+               selectedOutputSupportsVolume != supported {
+                selectedOutputSupportsVolume = supported
+            }
+            if let supported = snapshot.inputSupportsVolume,
+               selectedInputSupportsVolume != supported {
+                selectedInputSupportsVolume = supported
+            }
+            if let latency = snapshot.outputLatencyMilliseconds,
+               abs(outputLatencyMilliseconds - latency) > 0.01 {
+                outputLatencyMilliseconds = latency
+            }
+            if let status = snapshot.loginItemStatus {
+                if loginItemStatus != status { loginItemStatus = status }
+                let enabled = status == .enabled
+                if loginItemEnabled != enabled { loginItemEnabled = enabled }
+            }
+            if previousOutput != kAudioObjectUnknown, previousOutput != snapshot.outputID {
+                for app in applications where app.processingActive && app.routeDeviceUID == nil {
+                    scheduleApplicationProcessing(id: app.id, immediate: true)
+                }
+            }
+            if snapshot.force || !snapshot.newlyAvailableUIDs.isEmpty {
+                if let output = snapshot.devices.first(where: \.isDefaultOutput) {
+                    remember(output, usedAsOutput: true, usedAsInput: false)
+                }
+                if let input = snapshot.devices.first(where: \.isDefaultInput) {
+                    remember(input, usedAsOutput: false, usedAsInput: true)
+                }
+            }
+        }
+
+        if snapshot.masterWriteSequence == masterVolumeWriteSequence,
+           snapshot.outputID == selectedOutputID {
+            if let value = snapshot.outputVolume, abs(value - masterVolume) > 0.002 { masterVolume = value }
+            if let muted = snapshot.outputMuted, muted != masterMuted { masterMuted = muted }
+        }
+        if snapshot.inputWriteSequence == inputVolumeWriteSequence,
+           snapshot.inputID == selectedInputID {
+            if let value = snapshot.inputVolume, abs(value - inputVolume) > 0.002 { inputVolume = value }
+            if let muted = snapshot.inputMuted, muted != inputMuted { inputMuted = muted }
+        }
+        mergeSelectedDeviceRuntimeState(snapshot)
+
+        if runtimeRefreshPendingForce {
+            runtimeRefreshPendingForce = false
+            syncRuntimeState(force: true)
+        }
+    }
+
+    private func mergeSelectedDeviceRuntimeState(_ snapshot: RuntimeRefreshSnapshot) {
+        var nextStates = deviceRuntimeStates
+        var changed = false
+        if snapshot.outputID != kAudioObjectUnknown,
+           let device = devices.first(where: { $0.id == snapshot.outputID }) {
+            var state = nextStates[snapshot.outputID] ?? AudioDeviceRuntimeState(
+                availableSampleRates: device.sampleRate > 0 ? [device.sampleRate] : []
+            )
+            let original = state
+            if let value = snapshot.outputVolume { state.outputVolume = value }
+            if let muted = snapshot.outputMuted { state.outputMuted = muted }
+            if let supported = snapshot.outputSupportsVolume { state.outputSupportsVolume = supported }
+            if state != original { nextStates[snapshot.outputID] = state; changed = true }
+        }
+        if snapshot.inputID != kAudioObjectUnknown,
+           let device = devices.first(where: { $0.id == snapshot.inputID }) {
+            var state = nextStates[snapshot.inputID] ?? AudioDeviceRuntimeState(
+                availableSampleRates: device.sampleRate > 0 ? [device.sampleRate] : []
+            )
+            let original = state
+            if let value = snapshot.inputVolume { state.inputVolume = value }
+            if let muted = snapshot.inputMuted { state.inputMuted = muted }
+            if let supported = snapshot.inputSupportsVolume { state.inputSupportsVolume = supported }
+            if state != original { nextStates[snapshot.inputID] = state; changed = true }
+        }
+        if changed { deviceRuntimeStates = nextStates }
     }
 
     func setUserInteractionActive(_ active: Bool) {
@@ -1152,6 +1581,11 @@ final class AudioController: ObservableObject {
 
         activeUserInteractions = max(0, activeUserInteractions - 1)
         guard activeUserInteractions == 0 else { return }
+        if equalizerPersistenceWork != nil {
+            equalizerPersistenceWork?.cancel()
+            equalizerPersistenceWork = nil
+            persistEqualizers()
+        }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.06) { [weak self] in
             guard let self, self.activeUserInteractions == 0 else { return }
             self.syncRuntimeState()
@@ -1159,7 +1593,10 @@ final class AudioController: ObservableObject {
     }
 
     func refreshProcesses(force: Bool = false) {
-        guard !processRefreshInFlight else { return }
+        guard !processRefreshInFlight else {
+            processRefreshPendingForce = processRefreshPendingForce || force
+            return
+        }
         processRefreshInFlight = true
         processScanQueue.async { [weak self] in
             let processes = CoreAudioBridge.processes()
@@ -1173,6 +1610,10 @@ final class AudioController: ObservableObject {
                     return
                 }
                 self.applyProcessSnapshot(processes, force: force)
+                if self.processRefreshPendingForce {
+                    self.processRefreshPendingForce = false
+                    self.refreshProcesses(force: true)
+                }
             }
         }
     }
@@ -1229,6 +1670,18 @@ final class AudioController: ObservableObject {
         let newSignature = next.map { "\($0.id):\($0.name):\($0.category.rawValue):\($0.isRunningOutput)" }
         if force || oldSignature != newSignature { applications = next }
 
+        // A total EQ must automatically pick up every newly audible process;
+        // per-app EQ profiles also follow the stable bundle/name key across a
+        // Core Audio object-ID replacement.
+        for app in next {
+            let equalizerActive = masterEqualizer.isEnabled || applicationEqualizer(for: app).isEnabled
+            let ordinaryProcessingActive = app.isMuted || abs(app.volume - 1) > 0.001 || app.overdriveEnabled || app.routeDeviceUID != nil
+            let objectChanged = oldByPID[app.pid]?.id != app.id
+            if (equalizerActive || ordinaryProcessingActive) && (!app.processingActive || objectChanged) {
+                scheduleApplicationProcessing(id: app.id, immediate: true)
+            }
+        }
+
         let livePIDs = Set(next.map(\.pid))
         for removed in old.values where !livePIDs.contains(removed.pid) {
             processAudioManager.stop(processID: removed.pid)
@@ -1238,6 +1691,155 @@ final class AudioController: ObservableObject {
     private func isHostProcessAlive(_ pid: pid_t) -> Bool {
         if kill(pid, 0) == 0 { return true }
         return errno == EPERM
+    }
+
+    func deviceRuntimeState(for device: AudioDeviceModel) -> AudioDeviceRuntimeState {
+        var state = deviceRuntimeStates[device.id] ?? AudioDeviceRuntimeState(
+            availableSampleRates: device.sampleRate > 0 ? [device.sampleRate] : []
+        )
+        if device.id == selectedOutputID {
+            state.outputVolume = masterVolume
+            state.outputMuted = masterMuted
+            state.outputSupportsVolume = selectedOutputSupportsVolume
+        }
+        if device.id == selectedInputID {
+            state.inputVolume = inputVolume
+            state.inputMuted = inputMuted
+            state.inputSupportsVolume = selectedInputSupportsVolume
+        }
+        return state
+    }
+
+    func refreshDeviceRuntimeState(_ deviceID: AudioObjectID) {
+        guard let device = devices.first(where: { $0.id == deviceID }),
+              !deviceRuntimeRefreshesInFlight.contains(deviceID) else { return }
+        deviceRuntimeRefreshesInFlight.insert(deviceID)
+        runtimeReadQueue.async { [weak self] in
+            let state = AudioDeviceRuntimeState(
+                outputVolume: device.isOutput ? CoreAudioBridge.masterVolume(device: deviceID) : 0,
+                outputMuted: device.isOutput ? CoreAudioBridge.mute(device: deviceID) : false,
+                outputSupportsVolume: device.isOutput
+                    ? CoreAudioBridge.supportsVolume(device: deviceID, scope: kAudioDevicePropertyScopeOutput)
+                    : false,
+                inputVolume: device.isInput ? CoreAudioBridge.inputVolume(device: deviceID) : 0,
+                inputMuted: device.isInput
+                    ? CoreAudioBridge.mute(device: deviceID, scope: kAudioDevicePropertyScopeInput)
+                    : false,
+                inputSupportsVolume: device.isInput
+                    ? CoreAudioBridge.supportsVolume(device: deviceID, scope: kAudioDevicePropertyScopeInput)
+                    : false,
+                availableSampleRates: CoreAudioBridge.availableSampleRates(device: deviceID)
+            )
+            DispatchQueue.main.async { [weak self] in
+                guard let self else { return }
+                self.deviceRuntimeRefreshesInFlight.remove(deviceID)
+                guard self.devices.contains(where: { $0.id == deviceID }) else { return }
+                if self.deviceRuntimeStates[deviceID] != state {
+                    self.deviceRuntimeStates[deviceID] = state
+                }
+                if deviceID == self.selectedOutputID {
+                    if self.selectedOutputSupportsVolume != state.outputSupportsVolume {
+                        self.selectedOutputSupportsVolume = state.outputSupportsVolume
+                    }
+                }
+                if deviceID == self.selectedInputID {
+                    if self.selectedInputSupportsVolume != state.inputSupportsVolume {
+                        self.selectedInputSupportsVolume = state.inputSupportsVolume
+                    }
+                }
+            }
+        }
+    }
+
+    func setOutputVolume(_ value: Double, for deviceID: AudioObjectID) {
+        if deviceID == selectedOutputID {
+            setMasterVolume(value)
+            return
+        }
+        let requested = min(max(value, 0), 1)
+        if var state = deviceRuntimeStates[deviceID] {
+            state.outputVolume = requested
+            if requested > 0.001 { state.outputMuted = false }
+            deviceRuntimeStates[deviceID] = state
+        }
+        deviceWriteQueue.async { [weak self] in
+            do {
+                try CoreAudioBridge.setMasterVolume(requested, device: deviceID)
+                DispatchQueue.main.async { [weak self] in self?.refreshDeviceRuntimeState(deviceID) }
+            } catch {
+                DispatchQueue.main.async { [weak self] in
+                    self?.errorMessage = error.localizedDescription
+                    self?.refreshDeviceRuntimeState(deviceID)
+                }
+            }
+        }
+    }
+
+    func setInputVolume(_ value: Double, for deviceID: AudioObjectID) {
+        if deviceID == selectedInputID {
+            setInputVolume(value)
+            return
+        }
+        let requested = min(max(value, 0), 1)
+        if var state = deviceRuntimeStates[deviceID] {
+            state.inputVolume = requested
+            deviceRuntimeStates[deviceID] = state
+        }
+        deviceWriteQueue.async { [weak self] in
+            do {
+                try CoreAudioBridge.setInputVolume(requested, device: deviceID)
+                DispatchQueue.main.async { [weak self] in self?.refreshDeviceRuntimeState(deviceID) }
+            } catch {
+                DispatchQueue.main.async { [weak self] in
+                    self?.errorMessage = error.localizedDescription
+                    self?.refreshDeviceRuntimeState(deviceID)
+                }
+            }
+        }
+    }
+
+    func setOutputMuted(_ muted: Bool, for deviceID: AudioObjectID) {
+        if deviceID == selectedOutputID {
+            setMasterMuted(muted)
+            return
+        }
+        if var state = deviceRuntimeStates[deviceID] {
+            state.outputMuted = muted
+            deviceRuntimeStates[deviceID] = state
+        }
+        deviceWriteQueue.async { [weak self] in
+            do {
+                try CoreAudioBridge.setMute(muted, device: deviceID)
+                DispatchQueue.main.async { [weak self] in self?.refreshDeviceRuntimeState(deviceID) }
+            } catch {
+                DispatchQueue.main.async { [weak self] in
+                    self?.errorMessage = error.localizedDescription
+                    self?.refreshDeviceRuntimeState(deviceID)
+                }
+            }
+        }
+    }
+
+    func setInputMuted(_ muted: Bool, for deviceID: AudioObjectID) {
+        if deviceID == selectedInputID {
+            setInputMuted(muted)
+            return
+        }
+        if var state = deviceRuntimeStates[deviceID] {
+            state.inputMuted = muted
+            deviceRuntimeStates[deviceID] = state
+        }
+        deviceWriteQueue.async { [weak self] in
+            do {
+                try CoreAudioBridge.setMute(muted, device: deviceID, scope: kAudioDevicePropertyScopeInput)
+                DispatchQueue.main.async { [weak self] in self?.refreshDeviceRuntimeState(deviceID) }
+            } catch {
+                DispatchQueue.main.async { [weak self] in
+                    self?.errorMessage = error.localizedDescription
+                    self?.refreshDeviceRuntimeState(deviceID)
+                }
+            }
+        }
     }
 
     func setMasterVolume(_ value: Double) {
@@ -1331,46 +1933,105 @@ final class AudioController: ObservableObject {
 
     func setInputMuted(_ muted: Bool) {
         guard selectedInputID != kAudioObjectUnknown else { return }
-        do {
-            try CoreAudioBridge.setMute(muted, device: selectedInputID, scope: kAudioDevicePropertyScopeInput)
-            inputMuted = CoreAudioBridge.mute(device: selectedInputID, scope: kAudioDevicePropertyScopeInput)
-        } catch { errorMessage = error.localizedDescription }
+        let deviceID = selectedInputID
+        inputVolumeWriteSequence &+= 1
+        let sequence = inputVolumeWriteSequence
+        inputMuted = muted
+        deviceWriteQueue.async { [weak self] in
+            do {
+                try CoreAudioBridge.setMute(muted, device: deviceID, scope: kAudioDevicePropertyScopeInput)
+                let confirmed = CoreAudioBridge.mute(device: deviceID, scope: kAudioDevicePropertyScopeInput)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.inputVolumeWriteSequence == sequence else { return }
+                    self.inputMuted = confirmed
+                    self.refreshDeviceRuntimeState(deviceID)
+                }
+            } catch {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.inputVolumeWriteSequence == sequence else { return }
+                    self.errorMessage = error.localizedDescription
+                    self.syncRuntimeState(force: true)
+                }
+            }
+        }
     }
 
     func selectOutput(_ id: AudioObjectID) {
-        do {
-            try CoreAudioBridge.setDefaultOutput(id)
-            if let device = devices.first(where: { $0.id == id }) {
-                preferredOutputUID = device.uid
-                UserDefaults.standard.set(device.uid, forKey: Self.preferredOutputUIDKey)
-                remember(device, usedAsOutput: true, usedAsInput: false)
+        guard id != kAudioObjectUnknown, let device = devices.first(where: { $0.id == id }) else { return }
+        let previousID = selectedOutputID
+        outputSelectionSequence &+= 1
+        let sequence = outputSelectionSequence
+        selectedOutputID = id
+        let cached = deviceRuntimeState(for: device)
+        selectedOutputSupportsVolume = cached.outputSupportsVolume
+        deviceWriteQueue.async { [weak self] in
+            do {
+                try CoreAudioBridge.setDefaultOutput(id)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.outputSelectionSequence == sequence else { return }
+                    self.preferredOutputUID = device.uid
+                    UserDefaults.standard.set(device.uid, forKey: Self.preferredOutputUIDKey)
+                    self.remember(device, usedAsOutput: true, usedAsInput: false)
+                    self.syncRuntimeState(force: true)
+                    for app in self.applications where app.processingActive {
+                        self.scheduleApplicationProcessing(id: app.id, immediate: true)
+                    }
+                    self.statusMessage = L10n.format("已切换系统输出设备：%@", device.name)
+                }
+            } catch {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.outputSelectionSequence == sequence else { return }
+                    self.selectedOutputID = previousID
+                    self.errorMessage = error.localizedDescription
+                    self.syncRuntimeState(force: true)
+                }
             }
-            syncRuntimeState(force: true)
-            for app in applications where app.processingActive { scheduleApplicationProcessing(id: app.id, immediate: true) }
-            statusMessage = L10n.format("已切换系统输出设备：%@", selectedOutput?.name ?? L10n.tr("未知设备"))
         }
-        catch { errorMessage = error.localizedDescription }
     }
 
     func selectInput(_ id: AudioObjectID) {
-        do {
-            try CoreAudioBridge.setDefaultInput(id)
-            if let device = devices.first(where: { $0.id == id }) {
-                preferredInputUID = device.uid
-                UserDefaults.standard.set(device.uid, forKey: Self.preferredInputUIDKey)
-                remember(device, usedAsOutput: false, usedAsInput: true)
+        guard id != kAudioObjectUnknown, let device = devices.first(where: { $0.id == id }) else { return }
+        let previousID = selectedInputID
+        inputSelectionSequence &+= 1
+        let sequence = inputSelectionSequence
+        selectedInputID = id
+        let cached = deviceRuntimeState(for: device)
+        selectedInputSupportsVolume = cached.inputSupportsVolume
+        deviceWriteQueue.async { [weak self] in
+            do {
+                try CoreAudioBridge.setDefaultInput(id)
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.inputSelectionSequence == sequence else { return }
+                    self.preferredInputUID = device.uid
+                    UserDefaults.standard.set(device.uid, forKey: Self.preferredInputUIDKey)
+                    self.remember(device, usedAsOutput: false, usedAsInput: true)
+                    self.syncRuntimeState(force: true)
+                    self.statusMessage = L10n.format("已切换系统输入设备：%@", device.name)
+                }
+            } catch {
+                DispatchQueue.main.async { [weak self] in
+                    guard let self, self.inputSelectionSequence == sequence else { return }
+                    self.selectedInputID = previousID
+                    self.errorMessage = error.localizedDescription
+                    self.syncRuntimeState(force: true)
+                }
             }
-            syncRuntimeState(force: true)
-            statusMessage = L10n.format("已切换系统输入设备：%@", selectedInput?.name ?? L10n.tr("未知设备"))
-        } catch { errorMessage = error.localizedDescription }
+        }
     }
 
     func setSampleRate(_ sampleRate: Double, for deviceID: AudioObjectID) {
-        do {
-            try CoreAudioBridge.setSampleRate(sampleRate, device: deviceID)
-            syncRuntimeState(force: true)
-            statusMessage = L10n.format("采样率已设置为 %@ Hz", String(Int(sampleRate)))
-        } catch { errorMessage = error.localizedDescription }
+        deviceWriteQueue.async { [weak self] in
+            do {
+                try CoreAudioBridge.setSampleRate(sampleRate, device: deviceID)
+                DispatchQueue.main.async { [weak self] in
+                    self?.refreshDeviceRuntimeState(deviceID)
+                    self?.syncRuntimeState(force: true)
+                    self?.statusMessage = L10n.format("采样率已设置为 %@ Hz", String(Int(sampleRate)))
+                }
+            } catch {
+                DispatchQueue.main.async { [weak self] in self?.errorMessage = error.localizedDescription }
+            }
+        }
     }
 
     func setLoginItemEnabled(_ enabled: Bool) {
@@ -1381,6 +2042,7 @@ final class AudioController: ObservableObject {
                 try SMAppService.mainApp.unregister()
             }
             loginItemEnabled = SMAppService.mainApp.status == .enabled
+            loginItemStatus = SMAppService.mainApp.status
             switch SMAppService.mainApp.status {
             case .enabled: statusMessage = L10n.tr("已允许登录时启动")
             case .requiresApproval: statusMessage = L10n.tr("登录启动项已申请，等待在系统设置中批准")
@@ -1439,6 +2101,7 @@ final class AudioController: ObservableObject {
     }
 
     func resetApplicationControls(id: AudioObjectID) {
+        let equalizerKey = applications.first(where: { $0.id == id }).map(applicationPreferenceKey)
         updateApplication(id: id) { app in
             app.volume = 1
             app.isMuted = false
@@ -1446,6 +2109,10 @@ final class AudioController: ObservableObject {
             app.overdriveEnabled = false
             app.route = "跟随系统输出"
             app.routeDeviceUID = nil
+        }
+        if let equalizerKey {
+            applicationEqualizers.removeValue(forKey: equalizerKey)
+            scheduleEqualizerPersistence()
         }
         cancelTimedMute(id: id)
         scheduleApplicationProcessing(id: id, immediate: true)
@@ -1582,9 +2249,22 @@ final class AudioController: ObservableObject {
             routeDevice = systemDevice
         }
         let gain = app.isMuted ? 0 : app.volume * (app.overdriveEnabled ? Double(app.boost) : 1)
-        let forceProcessing = app.isMuted || abs(app.volume - 1) > 0.001 || app.overdriveEnabled || app.routeDeviceUID != nil
+        let applicationEqualizer = applicationEqualizer(for: app)
+        let forceProcessing = app.isMuted ||
+            abs(app.volume - 1) > 0.001 ||
+            app.overdriveEnabled ||
+            app.routeDeviceUID != nil ||
+            masterEqualizer.isEnabled ||
+            applicationEqualizer.isEnabled
         audioOperationsInFlight += 1
-        processAudioManager.apply(process: process, outputDeviceUID: routeDevice.uid, gain: Float(gain), forceProcessing: forceProcessing) { [weak self] result in
+        processAudioManager.apply(
+            process: process,
+            outputDeviceUID: routeDevice.uid,
+            gain: Float(gain),
+            masterEqualizer: masterEqualizer,
+            applicationEqualizer: applicationEqualizer,
+            forceProcessing: forceProcessing
+        ) { [weak self] result in
             guard let self else { return }
             self.audioOperationsInFlight = max(0, self.audioOperationsInFlight - 1)
             switch result {

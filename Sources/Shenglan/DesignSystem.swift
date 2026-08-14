@@ -16,6 +16,38 @@ enum ShenglanTypography {
     static let captionStrong = Font.system(size: 12, weight: .semibold)
 }
 
+enum ShenglanMotion {
+    /// Immediate control feedback without the abrupt 75 ms snap used before.
+    static let press = Animation.timingCurve(0.20, 0.82, 0.20, 1, duration: 0.12)
+    /// Shared state transition for tabs, disclosure and compact controls.
+    static let quick = Animation.timingCurve(0.20, 0.82, 0.20, 1, duration: 0.18)
+    /// A non-bouncy settle for larger coordinated value changes such as presets.
+    static let standard = Animation.timingCurve(0.16, 0.84, 0.24, 1, duration: 0.22)
+    static let settle = Animation.spring(response: 0.25, dampingFraction: 0.92, blendDuration: 0.04)
+}
+
+/// A compact, literal EQ-off mark. The letters keep the feature recognizable
+/// without relying on a generic power symbol, while the slash communicates
+/// bypass/disable in the same visual language as mute controls.
+struct EqualizerOffMark: View {
+    var size: CGFloat = 18
+
+    var body: some View {
+        ZStack {
+            Text("EQ")
+                .font(.system(size: size * 0.54, weight: .bold, design: .rounded))
+                .tracking(-0.35)
+
+            Capsule(style: .continuous)
+                .fill(Color.orange)
+                .frame(width: size * 1.08, height: max(1.4, size * 0.09))
+                .rotationEffect(.degrees(-43))
+        }
+        .frame(width: size * 1.15, height: size)
+        .accessibilityHidden(true)
+    }
+}
+
 private struct LiquidGlassEnabledKey: EnvironmentKey {
     static let defaultValue = true
 }
@@ -320,7 +352,7 @@ struct GlassButtonStyle: ButtonStyle {
             .glassControl(radius: radius, tint: tint?.opacity(0.12))
             .brightness(configuration.isPressed ? -0.025 : 0)
             .scaleEffect(configuration.isPressed ? 0.975 : 1)
-            .animation(.easeOut(duration: 0.075), value: configuration.isPressed)
+            .animation(ShenglanMotion.press, value: configuration.isPressed)
     }
 }
 
@@ -336,7 +368,7 @@ struct GlassIconButtonStyle: ButtonStyle {
             .glassControl(radius: radius, tint: tint?.opacity(0.1))
             .brightness(configuration.isPressed ? -0.03 : 0)
             .scaleEffect(configuration.isPressed ? 0.94 : 1)
-            .animation(.easeOut(duration: 0.075), value: configuration.isPressed)
+            .animation(ShenglanMotion.press, value: configuration.isPressed)
     }
 }
 
@@ -357,7 +389,7 @@ struct GlassSegmentButtonStyle: ButtonStyle {
             .opacity(selected ? 1 : 0.82)
             .brightness(configuration.isPressed ? -0.025 : 0)
             .scaleEffect(configuration.isPressed ? 0.985 : 1)
-            .animation(.easeOut(duration: 0.075), value: configuration.isPressed)
+            .animation(ShenglanMotion.press, value: configuration.isPressed)
     }
 }
 

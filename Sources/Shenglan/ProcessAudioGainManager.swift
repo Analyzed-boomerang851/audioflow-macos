@@ -27,6 +27,8 @@ final class ProcessAudioGainManager {
         process: AudioProcessModel,
         outputDeviceUID: String,
         gain: Float,
+        masterEqualizer: EqualizerSettings,
+        applicationEqualizer: EqualizerSettings,
         forceProcessing: Bool,
         completion: @escaping (Result<Bool, Error>) -> Void
     ) {
@@ -46,6 +48,11 @@ final class ProcessAudioGainManager {
                mixer.processObjectID == process.id,
                mixer.outputDeviceUID == outputDeviceUID {
                 mixer.gain = clampedGain
+                self.configure(
+                    mixer,
+                    masterEqualizer: masterEqualizer,
+                    applicationEqualizer: applicationEqualizer
+                )
                 // Atomic gain updates do not change controller state. Avoid a
                 // controller rebuild; the completion only closes the short HAL
                 // operation guard used by runtime polling.
@@ -65,6 +72,11 @@ final class ProcessAudioGainManager {
             var lastError: Error?
             for attempt in 0..<2 {
                 let mixer = SLProcessAudioMixer()
+                self.configure(
+                    mixer,
+                    masterEqualizer: masterEqualizer,
+                    applicationEqualizer: applicationEqualizer
+                )
                 do {
                     try mixer.start(
                         withProcessObjectID: process.id,
@@ -92,6 +104,39 @@ final class ProcessAudioGainManager {
                 )))
             }
         }
+    }
+
+    private func configure(
+        _ mixer: SLProcessAudioMixer,
+        masterEqualizer: EqualizerSettings,
+        applicationEqualizer: EqualizerSettings
+    ) {
+        mixer.setMasterEqualizerEnabled(
+            masterEqualizer.isEnabled,
+            preampDB: Float(masterEqualizer.preampDB),
+            bandGains: masterEqualizer.bandGainsDB.map(NSNumber.init(value:))
+        )
+        mixer.setMasterReverbWetMix(
+            Float(masterEqualizer.reverb.wetMix),
+            roomSize: Float(masterEqualizer.reverb.roomSize),
+            damping: Float(masterEqualizer.reverb.damping),
+            preDelayMS: Float(masterEqualizer.reverb.preDelayMS),
+            stereoWidth: Float(masterEqualizer.reverb.stereoWidth)
+        )
+        mixer.setMasterStereoBalance(Float(masterEqualizer.stereoBalance))
+        mixer.setApplicationEqualizerEnabled(
+            applicationEqualizer.isEnabled,
+            preampDB: Float(applicationEqualizer.preampDB),
+            bandGains: applicationEqualizer.bandGainsDB.map(NSNumber.init(value:))
+        )
+        mixer.setApplicationReverbWetMix(
+            Float(applicationEqualizer.reverb.wetMix),
+            roomSize: Float(applicationEqualizer.reverb.roomSize),
+            damping: Float(applicationEqualizer.reverb.damping),
+            preDelayMS: Float(applicationEqualizer.reverb.preDelayMS),
+            stereoWidth: Float(applicationEqualizer.reverb.stereoWidth)
+        )
+        mixer.setApplicationStereoBalance(Float(applicationEqualizer.stereoBalance))
     }
 
     func stop(processID: pid_t, completion: (() -> Void)? = nil) {

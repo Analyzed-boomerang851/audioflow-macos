@@ -12,12 +12,7 @@ struct MainWindowView: View {
             titleBar
             Divider().opacity(0.35)
             navigationBar
-            ZStack {
-                content
-                    .id(audio.selectedSection)
-                    .transition(.opacity)
-            }
-            .animation(.easeOut(duration: 0.12), value: audio.selectedSection)
+            content
         }
         .id("language-\(audio.language.rawValue)")
         // A custom image must live in SwiftUI's background slot instead of a
@@ -93,9 +88,7 @@ struct MainWindowView: View {
             Spacer()
 
             Button {
-                withAnimation(.easeOut(duration: 0.14)) {
-                    audio.selectedSection = .settings
-                }
+                audio.selectedSection = .settings
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: permissionSymbol)
@@ -219,7 +212,7 @@ private struct ControllerSectionSlider: View {
             }
             .padding(.horizontal, inset)
             .allowsHitTesting(false)
-            .animation(.easeOut(duration: 0.14), value: selectedIndex)
+            .animation(ShenglanMotion.standard, value: selectedIndex)
 
             HStack(spacing: 0) {
                 ForEach(sections) { section in
@@ -252,7 +245,7 @@ private struct ControllerSectionSlider: View {
                 .shadow(color: .black.opacity(0.11), radius: 7, y: 3)
                 .offset(x: inset + CGFloat(selectedIndex) * segmentWidth)
                 .allowsHitTesting(false)
-                .animation(.easeOut(duration: 0.14), value: selectedIndex)
+                .animation(ShenglanMotion.standard, value: selectedIndex)
 
             HStack(spacing: 0) {
                 ForEach(sections) { section in
@@ -297,9 +290,7 @@ private struct ControllerSectionSlider: View {
             // Keep the page switch out of the animation transaction. Only the
             // single glass indicator above animates; the destination page does
             // not re-render through an expensive glass transition.
-            withAnimation(.easeOut(duration: 0.14)) {
-                selection = section
-            }
+            selection = section
         } label: {
             Text(section.displayName)
                 .font(selection == section ? ShenglanTypography.navigationSelected : ShenglanTypography.navigation)
@@ -316,9 +307,7 @@ private struct ControllerSectionSlider: View {
                 let rawIndex = Int((value.location.x - inset) / segmentWidth)
                 let index = min(max(rawIndex, 0), sections.count - 1)
                 guard sections[index] != selection else { return }
-                withAnimation(.easeOut(duration: 0.14)) {
-                    selection = sections[index]
-                }
+                selection = sections[index]
             }
     }
 }
@@ -341,25 +330,35 @@ private struct MixerWorkspaceView: View {
 
 private struct SystemVolumeDock: View {
     @EnvironmentObject private var audio: AudioController
+    @State private var showsMasterEqualizer = false
 
     var body: some View {
         GeometryReader { geometry in
-            ScrollView(.vertical) {
+            ScrollView(.vertical, showsIndicators: false) {
                 dockContent(compact: geometry.size.height < 780)
                     .frame(width: 380, alignment: .topLeading)
             }
             .scrollIndicators(.hidden)
         }
         .liquidGlass(radius: 20)
+        .sheet(isPresented: $showsMasterEqualizer) {
+            EqualizerEditorSheet(scope: .master)
+                .environmentObject(audio)
+        }
     }
 
     private func dockContent(compact: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(L10n.tr("系统输出"))
-                .font(ShenglanTypography.sectionTitle)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            .frame(height: 24)
-            .padding(.bottom, compact ? 8 : 20)
+            HStack(spacing: 12) {
+                Text(L10n.tr("系统输出"))
+                    .font(ShenglanTypography.sectionTitle)
+
+                Spacer()
+
+                masterEqualizerButton
+            }
+            .frame(width: 320, height: 28)
+            .padding(.bottom, compact ? 8 : 16)
 
             FullWidthDeviceMenu(
                 title: "系统输出设备",
@@ -459,6 +458,38 @@ private struct SystemVolumeDock: View {
         .padding(.horizontal, 30)
         .padding(.top, compact ? 14 : 35)
         .padding(.bottom, compact ? 14 : 45)
+    }
+
+    private var masterEqualizerButton: some View {
+        let enabled = audio.masterEqualizer.isEnabled
+        let stateTitle = enabled
+            ? audio.masterEqualizer.preset.title
+            : L10n.tr("旁路直通")
+
+        return Button { showsMasterEqualizer = true } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "slider.vertical.3")
+                    .font(.system(size: 11, weight: .semibold))
+                Text("EQ")
+                    .font(ShenglanTypography.captionStrong)
+                Circle()
+                    .fill(enabled ? Color.green : Color.secondary.opacity(0.34))
+                    .frame(width: 6, height: 6)
+            }
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .glassControl(
+            radius: 9,
+            tint: enabled ? Color.green.opacity(0.08) : Color.primary.opacity(0.014)
+        )
+        .disabled(audio.systemAudioPermissionGranted == false)
+        .opacity(audio.systemAudioPermissionGranted == false ? 0.5 : 1)
+        .accessibilityLabel(L10n.tr("总均衡器"))
+        .accessibilityValue(stateTitle)
+        .help("\(L10n.tr("总均衡器")) · \(stateTitle)")
     }
 
     private func devicePicker(
@@ -746,6 +777,23 @@ private struct ActiveAudioList: View {
                         Text(L10n.tr("音频应用（\(audio.runningApplications.count)）")).font(ShenglanTypography.sectionTitle)
                     }
                     Spacer()
+                    if audio.shouldShowDisableAllEqualizersAction {
+                        Button { audio.disableAllEqualizers() } label: {
+                            HStack(spacing: 6) {
+                                EqualizerOffMark(size: 18)
+                                Text(L10n.tr("关闭所有EQ"))
+                                    .lineLimit(1)
+                                    .fixedSize(horizontal: true, vertical: false)
+                            }
+                                .font(ShenglanTypography.control)
+                                .frame(minHeight: 34)
+                                .fixedSize(horizontal: true, vertical: false)
+                        }
+                        .buttonStyle(GlassButtonStyle(minHeight: 34, horizontalPadding: 10, radius: 11))
+                        .foregroundStyle(.orange)
+                        .help(L10n.tr("关闭总均衡器和所有应用均衡器，保留预设参数"))
+                        .transition(.opacity.combined(with: .scale(scale: 0.94, anchor: .trailing)))
+                    }
                     if !audio.runningApplications.isEmpty {
                         Button { audio.setAllActiveMuted(!allMuted) } label: {
                             Label(allMuted ? L10n.tr("取消全部静音") : L10n.tr("全部静音"), systemImage: allMuted ? "speaker.wave.2" : "speaker.slash")
@@ -758,6 +806,7 @@ private struct ActiveAudioList: View {
                         .accessibilityHint(audio.systemAudioPermissionGranted == false ? L10n.tr("请先在权限中心允许系统音频录制") : "")
                     }
                 }
+                .animation(ShenglanMotion.quick, value: audio.shouldShowDisableAllEqualizersAction)
 
                 ApplicationListTabBar(selection: $selectedTab)
                     .environmentObject(audio)
@@ -803,14 +852,14 @@ private struct ActiveAudioList: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
-                ScrollView {
+                ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(spacing: 0) {
                         groupSection(group, applications: items)
                     }
                 }
             }
         } else {
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: false) {
                 LazyVStack(spacing: 0) {
                     ForEach(ApplicationOrderGroup.categoryGroups) { group in
                         let items = audio.orderedApplications(for: group)
@@ -845,6 +894,7 @@ private struct ActiveApplicationRow: View {
     let app: ApplicationMixState
     let orderGroup: ApplicationOrderGroup
     @State private var reorderDragOffset: CGFloat = 0
+    @State private var showsApplicationEqualizer = false
 
     private var controlsAvailable: Bool {
         audio.systemAudioPermissionGranted != false
@@ -861,6 +911,16 @@ private struct ActiveApplicationRow: View {
         .offset(y: reorderDragOffset)
         .zIndex(reorderDragOffset == 0 ? 0 : 10)
         .accessibilityHint(controlsAvailable ? "" : L10n.tr("请先在权限中心允许系统音频录制"))
+        .sheet(isPresented: $showsApplicationEqualizer) {
+            EqualizerEditorSheet(
+                scope: .application(
+                    key: audio.applicationPreferenceKey(for: app),
+                    name: app.name,
+                    icon: app.icon
+                )
+            )
+            .environmentObject(audio)
+        }
     }
 
     private struct RowMetrics {
@@ -900,7 +960,7 @@ private struct ActiveApplicationRow: View {
                 .layoutPriority(1)
             volumeLabel
             routeMenu(width: metrics.routeWidth, height: compact ? 34 : 36)
-            moreButton(size: compact ? 30 : 32)
+            applicationActionsGroup(size: compact ? 30 : 32)
         }
         .padding(.horizontal, compact ? 12 : 16)
         .frame(height: compact ? 58 : 64)
@@ -996,8 +1056,41 @@ private struct ActiveApplicationRow: View {
         .opacity(controlsAvailable ? 1 : 0.5)
     }
 
+    private func applicationActionsGroup(size: CGFloat) -> some View {
+        let enabled = audio.applicationEqualizer(for: app).isEnabled
+        return HStack(spacing: 0) {
+            Button { showsApplicationEqualizer = true } label: {
+                Text("EQ")
+                    .font(ShenglanTypography.captionStrong)
+                    .foregroundStyle(enabled ? Color.green : Color.secondary)
+                    .frame(width: size + 4, height: size)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!controlsAvailable)
+            .opacity(controlsAvailable ? 1 : 0.5)
+            .accessibilityLabel(L10n.tr("应用均衡器"))
+            .accessibilityValue(enabled ? L10n.tr("已开启") : L10n.tr("旁路直通"))
+
+            Divider()
+                .frame(height: 16)
+                .opacity(0.42)
+
+            moreButton(size: size)
+        }
+        .frame(height: size)
+        .glassControl(radius: 10, tint: Color.primary.opacity(0.018))
+    }
+
     private func moreButton(size: CGFloat) -> some View {
         Menu {
+            Button {
+                showsApplicationEqualizer = true
+            } label: {
+                Label(L10n.tr("应用均衡器…"), systemImage: "slider.vertical.3")
+            }
+            .disabled(!controlsAvailable)
+            Divider()
             Button {
                 audio.toggleApplicationFavorite(app)
             } label: {
@@ -1058,7 +1151,6 @@ private struct ActiveApplicationRow: View {
         .buttonStyle(.plain)
         .menuIndicator(.hidden)
         .frame(width: size, height: size)
-        .glassControl(radius: 10, tint: Color.primary.opacity(0.018))
         .accessibilityLabel(L10n.tr("更多控制"))
     }
 }

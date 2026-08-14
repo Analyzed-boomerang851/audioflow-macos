@@ -284,7 +284,7 @@ private struct MenuBarPopoverRoot: View {
             .scaleEffect(contentVisible ? 1 : 0.992, anchor: .top)
             .offset(y: contentVisible ? 0 : -3)
             .onAppear {
-                withAnimation(.easeOut(duration: 0.13)) {
+                withAnimation(ShenglanMotion.quick) {
                     contentVisible = true
                 }
             }
