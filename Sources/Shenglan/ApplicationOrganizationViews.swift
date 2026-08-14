@@ -12,9 +12,7 @@ struct ApplicationListTabBar: View {
         HStack(spacing: compact ? 2 : 4) {
             ForEach(ApplicationListTab.allCases) { tab in
                 Button {
-                    withAnimation(.easeOut(duration: 0.14)) {
-                        selection = tab
-                    }
+                    selection = tab
                 } label: {
                     HStack(spacing: 5) {
                         if !compact || tab == .favorites {
@@ -29,15 +27,15 @@ struct ApplicationListTabBar: View {
                     .frame(maxWidth: .infinity, minHeight: height - 6)
                     .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .background {
-                        if selection == tab {
-                            RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                .fill(Color.primary.opacity(colorScheme == .dark ? 0.13 : 0.07))
-                                .overlay {
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .stroke(Color.primary.opacity(0.08), lineWidth: 0.7)
-                                }
-                                .transition(.opacity.combined(with: .scale(scale: 0.98)))
-                        }
+                        RoundedRectangle(cornerRadius: 10, style: .continuous)
+                            .fill(Color.primary.opacity(colorScheme == .dark ? 0.13 : 0.07))
+                            .overlay {
+                                RoundedRectangle(cornerRadius: 10, style: .continuous)
+                                    .stroke(Color.primary.opacity(0.08), lineWidth: 0.7)
+                            }
+                            .opacity(selection == tab ? 1 : 0)
+                            .scaleEffect(selection == tab ? 1 : 0.985)
+                            .animation(ShenglanMotion.quick, value: selection)
                     }
                 }
                 .buttonStyle(.plain)
@@ -62,7 +60,7 @@ struct ApplicationGroupHeader: View {
 
     var body: some View {
         Button {
-            withAnimation(.easeOut(duration: 0.14)) {
+            withAnimation(ShenglanMotion.quick) {
                 audio.toggleApplicationGroupCollapsed(group)
             }
         } label: {
@@ -86,7 +84,7 @@ struct ApplicationGroupHeader: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundStyle(.secondary)
                     .rotationEffect(.degrees(audio.isApplicationGroupCollapsed(group) ? -90 : 0))
-                    .animation(.easeOut(duration: 0.14), value: audio.isApplicationGroupCollapsed(group))
+                    .animation(ShenglanMotion.quick, value: audio.isApplicationGroupCollapsed(group))
             }
             .padding(.horizontal, compact ? 8 : 40)
             .frame(maxWidth: .infinity, minHeight: compact ? 34 : 44)
@@ -183,7 +181,7 @@ struct ApplicationDragHandle: View {
                                 in: group
                             )
                         }
-                        withAnimation(.interactiveSpring(response: 0.22, dampingFraction: 0.86)) {
+                        withAnimation(ShenglanMotion.settle) {
                             rowOffset = 0
                             isDragging = false
                         }
@@ -199,7 +197,7 @@ struct ApplicationDragHandle: View {
                 case .decrement: step = -1
                 @unknown default: return
                 }
-                withAnimation(.interactiveSpring(response: 0.22, dampingFraction: 0.86)) {
+                withAnimation(ShenglanMotion.settle) {
                     _ = audio.moveApplication(
                         preferenceKey: audio.applicationPreferenceKey(for: app),
                         by: step,

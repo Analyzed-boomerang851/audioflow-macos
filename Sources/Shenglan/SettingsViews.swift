@@ -132,7 +132,7 @@ struct SettingsWorkspaceView: View {
     }
 
     private var settingsDetail: some View {
-        ScrollView {
+        ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 18) {
                 HStack(spacing: 13) {
                     Image(systemName: selectedPane.symbol)
@@ -714,7 +714,7 @@ struct DeviceWorkspaceView: View {
                     .buttonStyle(GlassIconButtonStyle(size: 36, radius: 11))
             }
 
-            ScrollView {
+            ScrollView(.vertical, showsIndicators: false) {
                 VStack(alignment: .leading, spacing: 18) {
                     deviceSection(title: "输出设备", devices: audio.outputDevices)
                     deviceSection(title: "输入设备", devices: audio.inputDevices)
@@ -787,7 +787,8 @@ struct DeviceWorkspaceView: View {
     }
 
     private func deviceDetail(_ device: AudioDeviceModel) -> some View {
-        ScrollView {
+        let runtime = audio.deviceRuntimeState(for: device)
+        return ScrollView(.vertical, showsIndicators: false) {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 14) {
                     Image(systemName: device.symbol)
@@ -814,17 +815,17 @@ struct DeviceWorkspaceView: View {
                 }
 
                 ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .top, spacing: 16) { controlCards(for: device) }
-                    VStack(spacing: 16) { controlCards(for: device) }
+                    HStack(alignment: .top, spacing: 16) { controlCards(for: device, runtime: runtime) }
+                    VStack(spacing: 16) { controlCards(for: device, runtime: runtime) }
                 }
 
                 ViewThatFits(in: .horizontal) {
                     HStack(alignment: .top, spacing: 16) {
-                        formatCard(device).frame(minWidth: 300, maxWidth: .infinity)
+                        formatCard(device, runtime: runtime).frame(minWidth: 300, maxWidth: .infinity)
                         infoCard(device).frame(minWidth: 300, maxWidth: .infinity)
                     }
                     VStack(spacing: 16) {
-                        formatCard(device)
+                        formatCard(device, runtime: runtime)
                         infoCard(device)
                     }
                 }
@@ -833,25 +834,28 @@ struct DeviceWorkspaceView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .liquidGlass(radius: 22)
+        .task(id: device.id) {
+            audio.refreshDeviceRuntimeState(device.id)
+        }
     }
 
     @ViewBuilder
-    private func controlCards(for device: AudioDeviceModel) -> some View {
+    private func controlCards(for device: AudioDeviceModel, runtime: AudioDeviceRuntimeState) -> some View {
         if device.isOutput {
             SettingsCard(title: "输出控制") {
                 HStack(spacing: 12) {
-                    Button { setOutputMute(!CoreAudioBridge.mute(device: device.id), device: device) } label: {
-                        Image(systemName: CoreAudioBridge.mute(device: device.id) ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    Button { audio.setOutputMuted(!runtime.outputMuted, for: device.id) } label: {
+                        Image(systemName: runtime.outputMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                     }
                     .buttonStyle(GlassIconButtonStyle(size: 36, radius: 11))
-                    .disabled(!CoreAudioBridge.supportsVolume(device: device.id, scope: kAudioDevicePropertyScopeOutput))
+                    .disabled(!runtime.outputSupportsVolume)
                     FluidSlider(
-                        value: outputVolumeValue(for: device),
+                        value: runtime.outputMuted ? 0 : runtime.outputVolume,
                         onEditingChanged: audio.setUserInteractionActive,
-                        onChange: { setOutputVolume($0, for: device) }
+                        onChange: { audio.setOutputVolume($0, for: device.id) }
                     )
-                    .disabled(!CoreAudioBridge.supportsVolume(device: device.id, scope: kAudioDevicePropertyScopeOutput))
-                    Text(L10n.tr("\(Int(outputVolumeValue(for: device) * 100))%"))
+                    .disabled(!runtime.outputSupportsVolume)
+                    Text(L10n.tr("\(Int((runtime.outputMuted ? 0 : runtime.outputVolume) * 100))%"))
                         .font(ShenglanTypography.caption.monospacedDigit())
                         .frame(width: 42, alignment: .trailing)
                 }
@@ -865,18 +869,18 @@ struct DeviceWorkspaceView: View {
         if device.isInput {
             SettingsCard(title: "输入控制") {
                 HStack(spacing: 12) {
-                    Button { setInputMute(!CoreAudioBridge.mute(device: device.id, scope: kAudioDevicePropertyScopeInput), device: device) } label: {
-                        Image(systemName: CoreAudioBridge.mute(device: device.id, scope: kAudioDevicePropertyScopeInput) ? "mic.slash.fill" : "mic.fill")
+                    Button { audio.setInputMuted(!runtime.inputMuted, for: device.id) } label: {
+                        Image(systemName: runtime.inputMuted ? "mic.slash.fill" : "mic.fill")
                     }
                     .buttonStyle(GlassIconButtonStyle(size: 36, radius: 11))
-                    .disabled(!CoreAudioBridge.supportsVolume(device: device.id, scope: kAudioDevicePropertyScopeInput))
+                    .disabled(!runtime.inputSupportsVolume)
                     FluidSlider(
-                        value: inputVolumeValue(for: device),
+                        value: runtime.inputVolume,
                         onEditingChanged: audio.setUserInteractionActive,
-                        onChange: { setInputVolume($0, for: device) }
+                        onChange: { audio.setInputVolume($0, for: device.id) }
                     )
-                    .disabled(!CoreAudioBridge.supportsVolume(device: device.id, scope: kAudioDevicePropertyScopeInput))
-                    Text(L10n.tr("\(Int(inputVolumeValue(for: device) * 100))%"))
+                    .disabled(!runtime.inputSupportsVolume)
+                    Text(L10n.tr("\(Int(runtime.inputVolume * 100))%"))
                         .font(ShenglanTypography.caption.monospacedDigit())
                         .frame(width: 42, alignment: .trailing)
                 }
@@ -889,13 +893,13 @@ struct DeviceWorkspaceView: View {
         }
     }
 
-    private func formatCard(_ device: AudioDeviceModel) -> some View {
+    private func formatCard(_ device: AudioDeviceModel, runtime: AudioDeviceRuntimeState) -> some View {
         SettingsCard(title: "音频格式") {
             HStack {
                 Text(L10n.tr("采样率"))
                 Spacer()
                 Picker(L10n.tr("采样率"), selection: sampleRateBinding(for: device)) {
-                    ForEach(CoreAudioBridge.availableSampleRates(device: device.id), id: \.self) { rate in
+                    ForEach(runtime.availableSampleRates, id: \.self) { rate in
                         Text(rateLabel(rate)).tag(rate)
                     }
                 }
@@ -925,55 +929,8 @@ struct DeviceWorkspaceView: View {
         }
     }
 
-    private func outputVolumeValue(for device: AudioDeviceModel) -> Double {
-        if device.id == audio.selectedOutputID {
-            return audio.masterMuted ? 0 : audio.masterVolume
-        }
-        return CoreAudioBridge.mute(device: device.id) ? 0 : CoreAudioBridge.masterVolume(device: device.id)
-    }
-
-    private func setOutputVolume(_ value: Double, for device: AudioDeviceModel) {
-        if device.id == audio.selectedOutputID {
-            audio.setMasterVolume(value)
-        } else {
-            DispatchQueue.global(qos: .userInteractive).async {
-                do { try CoreAudioBridge.setMasterVolume(value, device: device.id) }
-                catch {
-                    DispatchQueue.main.async { audio.errorMessage = error.localizedDescription }
-                }
-            }
-        }
-    }
-
-    private func inputVolumeValue(for device: AudioDeviceModel) -> Double {
-        device.id == audio.selectedInputID ? audio.inputVolume : CoreAudioBridge.inputVolume(device: device.id)
-    }
-
-    private func setInputVolume(_ value: Double, for device: AudioDeviceModel) {
-        if device.id == audio.selectedInputID {
-            audio.setInputVolume(value)
-        } else {
-            DispatchQueue.global(qos: .userInteractive).async {
-                do { try CoreAudioBridge.setInputVolume(value, device: device.id) }
-                catch {
-                    DispatchQueue.main.async { audio.errorMessage = error.localizedDescription }
-                }
-            }
-        }
-    }
-
     private func sampleRateBinding(for device: AudioDeviceModel) -> Binding<Double> {
         Binding(get: { device.sampleRate }, set: { audio.setSampleRate($0, for: device.id) })
-    }
-
-    private func setOutputMute(_ muted: Bool, device: AudioDeviceModel) {
-        do { try CoreAudioBridge.setMute(muted, device: device.id); audio.syncRuntimeState(force: true) }
-        catch { audio.errorMessage = error.localizedDescription }
-    }
-
-    private func setInputMute(_ muted: Bool, device: AudioDeviceModel) {
-        do { try CoreAudioBridge.setMute(muted, device: device.id, scope: kAudioDevicePropertyScopeInput); audio.syncRuntimeState(force: true) }
-        catch { audio.errorMessage = error.localizedDescription }
     }
 
     private func rateLabel(_ rate: Double) -> String {

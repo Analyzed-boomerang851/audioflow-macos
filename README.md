@@ -33,6 +33,7 @@ This repository is not affiliated with or endorsed by any commercial audio-contr
 - **Per-app mixing** — discovers real Core Audio processes and applies independent volume and mute controls.
 - **Output routing** — sends an individual app to a selected audio output device.
 - **Volume boost** — supports up to 4x per-app gain when extra headroom is needed.
+- **Real-time equalizer** — applies ten-band tone and room presets with per-preset memory, stereo balance, preamp headroom, and peak protection at mutually exclusive total or per-app scopes.
 - **Live device discovery** — tracks input, output, Bluetooth, and built-in audio devices.
 - **Menu bar control** — switch between a 336 pt Minimal popover for daily volume changes and the original Full controller for device routing and organization.
 - **App organization** — favorites, media-aware categories, collapsible groups, and drag-to-reorder.
@@ -46,6 +47,7 @@ This repository is not affiliated with or endorsed by any commercial audio-contr
 
 AudioFlow keeps dated, append-only product iterations in [CHANGELOG.md](CHANGELOG.md). Older release notes remain available under [`docs/`](docs/).
 
+- **2026-08-14 · 1.2.0** — added real total/per-app EQ, stronger tone and room presets, per-preset memory and reset, stereo balance, multilingual EQ UI, conditional one-click EQ shutdown, and broad runtime/motion performance work. See [release notes](docs/RELEASE_NOTES_1.2.0.md).
 - **2026-08-14 · 1.1.0** — added Minimal and Full popover styles, tightened Minimal mode to 336 pt, and added persistent drag ordering for its app list. See [release notes](docs/RELEASE_NOTES_1.1.0.md).
 - **2026-08-13 · 1.0.0** — initial open-source release with system/per-app mixing, routing, organization, themes, localization, and DMG packaging. See [release notes](docs/RELEASE_NOTES_1.0.0.md).
 
