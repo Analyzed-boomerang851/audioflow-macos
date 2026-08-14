@@ -197,6 +197,16 @@ struct SettingsWorkspaceView: View {
 
             settingsGroup(title: "菜单栏") {
                 preferenceRow(
+                    symbol: audio.menuBarPopoverStyle.symbol,
+                    title: "弹层风格",
+                    detail: "选择菜单栏弹层的功能密度。"
+                ) {
+                    popoverStylePicker
+                }
+
+                Divider().opacity(0.35)
+
+                preferenceRow(
                     symbol: audio.menuBarIcon.symbol,
                     title: "菜单栏图标",
                     detail: "选择音合流声环、动态扬声器或音量柱。"
@@ -536,6 +546,33 @@ struct SettingsWorkspaceView: View {
         .menuIndicator(.hidden)
         .frame(width: 190, height: 40)
         .glassControl(radius: 11)
+    }
+
+    private var popoverStylePicker: some View {
+        HStack(spacing: 8) {
+            ForEach(MenuBarPopoverStyle.allCases) { style in
+                Button {
+                    audio.menuBarPopoverStyle = style
+                } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: style.symbol)
+                        Text(style.displayName)
+                            .lineLimit(1)
+                    }
+                    .font(ShenglanTypography.control)
+                    .frame(width: 94, height: 38)
+                    .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(GlassSegmentButtonStyle(selected: audio.menuBarPopoverStyle == style))
+                .help(
+                    L10n.tr(
+                        style == .minimal
+                            ? "只显示整体音量和各应用音量，可拖动调整顺序。"
+                            : "保留设备、分类、收藏、排序与输出路由。"
+                    )
+                )
+            }
+        }
     }
 
     private var languageMenu: some View {

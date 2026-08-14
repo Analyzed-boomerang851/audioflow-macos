@@ -321,3 +321,17 @@ enum MenuBarVolumeStyle: String, CaseIterable, Identifiable {
         }
     }
 }
+
+enum MenuBarPopoverStyle: String, CaseIterable, Identifiable {
+    case minimal = "极简模式"
+    case full = "完整模式"
+
+    var id: String { rawValue }
+    var displayName: String { L10n.tr(rawValue) }
+    var symbol: String {
+        switch self {
+        case .minimal: "rectangle.compress.vertical"
+        case .full: "slider.horizontal.3"
+        }
+    }
+}

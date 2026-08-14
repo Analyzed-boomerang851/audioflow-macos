@@ -104,6 +104,22 @@ final class MenuBarPopoverController: NSObject, NSPopoverDelegate {
             }
             .store(in: &cancellables)
 
+        audio.$menuBarPopoverStyle
+            .dropFirst()
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in
+                guard let self, let audio = self.audio,
+                      let hostingController = self.popover.contentViewController
+                        as? NSHostingController<MenuBarPopoverRoot> else { return }
+                var transaction = Transaction(animation: nil)
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    hostingController.rootView = self.makeRootView(for: audio)
+                }
+                hostingController.view.layoutSubtreeIfNeeded()
+            }
+            .store(in: &cancellables)
+
         refreshPresentation()
     }
 

@@ -36,7 +36,29 @@ struct MenuBarControlView: View {
         return min(max(contentHeight, 44), 360)
     }
 
+    private var minimalApplicationListHeight: CGFloat {
+        guard !audio.runningApplications.isEmpty else { return 70 }
+        return min(CGFloat(audio.runningApplications.count) * 44, 264)
+    }
+
     var body: some View {
+        Group {
+            switch audio.menuBarPopoverStyle {
+            case .minimal:
+                minimalPopover
+            case .full:
+                fullPopover
+            }
+        }
+        .font(ShenglanTypography.body)
+        .background {
+            ThemeBackdrop()
+                .ignoresSafeArea()
+                .allowsHitTesting(false)
+        }
+    }
+
+    private var fullPopover: some View {
         VStack(spacing: 12) {
                 HStack(spacing: 10) {
                     ShenglanIcon(size: 36)
@@ -136,12 +158,75 @@ struct MenuBarControlView: View {
         }
         .padding(14)
         .frame(width: 640)
-        .font(ShenglanTypography.body)
-        .background {
-            ThemeBackdrop()
-                .ignoresSafeArea()
-                .allowsHitTesting(false)
+    }
+
+    private var minimalPopover: some View {
+        VStack(spacing: 8) {
+            HStack(spacing: 8) {
+                ShenglanIcon(size: 28)
+                Text(L10n.tr("音合流", language: audio.language))
+                    .font(ShenglanTypography.sectionTitle)
+                Spacer()
+                Button { openMain(.settings) } label: {
+                    Image(systemName: "gearshape.fill")
+                }
+                .buttonStyle(GlassIconButtonStyle(size: 28, radius: 8))
+                .help(L10n.tr("设置", language: audio.language))
+            }
+
+            HStack(spacing: 7) {
+                Button { audio.setMasterMuted(!audio.masterMuted) } label: {
+                    Image(systemName: audio.masterMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                }
+                .buttonStyle(GlassIconButtonStyle(size: 28, radius: 8))
+                .disabled(!audio.selectedOutputSupportsVolume)
+
+                Text(L10n.tr("整体音量"))
+                    .font(ShenglanTypography.captionStrong)
+                    .frame(width: 56, alignment: .leading)
+
+                FluidSlider(
+                    value: audio.masterMuted ? 0 : audio.masterVolume,
+                    onEditingChanged: audio.setUserInteractionActive,
+                    onChange: audio.setMasterVolume
+                )
+                .disabled(!audio.selectedOutputSupportsVolume)
+
+                Text(audio.masterMuted ? "0%" : "\(Int(audio.masterVolume * 100))%")
+                    .font(ShenglanTypography.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+                    .frame(width: 34, alignment: .trailing)
+            }
+            .padding(.horizontal, 7)
+            .frame(height: 44)
+            .liquidGlass(radius: 12, tint: panelGlassTint)
+
+            if audio.runningApplications.isEmpty {
+                VStack(spacing: 4) {
+                    Image(systemName: "waveform.slash")
+                        .foregroundStyle(.secondary)
+                    Text(L10n.tr("当前没有音频应用"))
+                        .font(ShenglanTypography.captionStrong)
+                    Text(L10n.tr("播放声音后会加入列表"))
+                        .font(ShenglanTypography.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .frame(maxWidth: .infinity, minHeight: minimalApplicationListHeight)
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 0) {
+                        ForEach(audio.orderedMinimalApplications) { app in
+                            MinimalMenuBarApplicationRow(app: app)
+                                .environmentObject(audio)
+                        }
+                    }
+                }
+                .scrollIndicators(.automatic)
+                .frame(height: minimalApplicationListHeight)
+            }
         }
+        .padding(10)
+        .frame(width: 336)
     }
 
     @ViewBuilder
@@ -228,6 +313,156 @@ struct MenuBarControlView: View {
         audio.selectedSection = section
         openWindow(id: "main")
         NSApp.activate(ignoringOtherApps: true)
+    }
+}
+
+private struct MinimalMenuBarApplicationRow: View {
+    @EnvironmentObject private var audio: AudioController
+    let app: ApplicationMixState
+    @State private var reorderDragOffset: CGFloat = 0
+
+    private var current: ApplicationMixState {
+        audio.applicationState(id: app.id) ?? app
+    }
+
+    private var controlsAvailable: Bool {
+        audio.systemAudioPermissionGranted != false
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            MinimalApplicationDragHandle(app: app, rowOffset: $reorderDragOffset)
+                .environmentObject(audio)
+
+            AppIconView(image: app.icon, size: 26)
+                .overlay(alignment: .bottomTrailing) {
+                    Circle()
+                        .fill(current.isRunningOutput ? Color.green : Color.secondary.opacity(0.55))
+                        .frame(width: 7, height: 7)
+                        .overlay(Circle().stroke(Color(nsColor: .windowBackgroundColor), lineWidth: 1.25))
+                }
+
+            Text(L10n.tr(app.name))
+                .font(ShenglanTypography.captionStrong)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(width: 78, alignment: .leading)
+
+            Button {
+                audio.setApplicationMuted(id: app.id, muted: !current.isMuted)
+            } label: {
+                Image(systemName: current.isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                    .foregroundStyle(current.isMuted ? Color.orange : Color.secondary)
+                    .frame(width: 24, height: 24)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .disabled(!controlsAvailable)
+            .opacity(controlsAvailable ? 1 : 0.5)
+
+            FluidSlider(
+                value: audio.masterMuted || current.isMuted ? 0 : current.volume,
+                onEditingChanged: audio.setUserInteractionActive,
+                onChange: { audio.setApplicationVolume(id: app.id, volume: $0) }
+            )
+            .frame(minWidth: 64, maxWidth: .infinity)
+            .disabled(audio.masterMuted || !controlsAvailable)
+            .opacity(audio.masterMuted || !controlsAvailable ? 0.5 : 1)
+
+            Text(audio.masterMuted || current.isMuted ? "0%" : "\(Int(current.volume * 100))%")
+                .font(ShenglanTypography.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+                .frame(width: 34, alignment: .trailing)
+        }
+        .frame(maxWidth: .infinity, minHeight: 44)
+        .padding(.horizontal, 4)
+        .overlay(alignment: .bottom) {
+            Divider()
+                .opacity(0.2)
+                .padding(.leading, 40)
+        }
+        .contentShape(Rectangle())
+        .offset(y: reorderDragOffset)
+        .zIndex(reorderDragOffset == 0 ? 0 : 10)
+        .accessibilityLabel(
+            "\(L10n.tr(app.name))，\(current.isRunningOutput ? L10n.tr("正在发声") : L10n.tr("已暂停"))"
+        )
+    }
+}
+
+private struct MinimalApplicationDragHandle: View {
+    @EnvironmentObject private var audio: AudioController
+    let app: ApplicationMixState
+    @Binding var rowOffset: CGFloat
+    @State private var isDragging = false
+    @State private var lastTranslationBand = 0
+    @State private var committedRows = 0
+
+    private let rowStep: CGFloat = 44
+    private let activationDistance: CGFloat = 20
+
+    var body: some View {
+        Image(systemName: "line.3.horizontal")
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(.secondary)
+            .frame(width: 16, height: 28)
+            .contentShape(Rectangle())
+            .scaleEffect(isDragging ? 1.05 : 1)
+            .highPriorityGesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .global)
+                    .onChanged { value in
+                        if !isDragging {
+                            isDragging = true
+                            lastTranslationBand = 0
+                            committedRows = 0
+                            audio.setUserInteractionActive(true)
+                        }
+
+                        let band = Int(value.translation.height / activationDistance)
+                        if band != lastTranslationBand {
+                            let direction = band > lastTranslationBand ? 1 : -1
+                            while lastTranslationBand != band {
+                                lastTranslationBand += direction
+                                if audio.moveMinimalApplication(
+                                    preferenceKey: audio.minimalApplicationOrderKey(for: app),
+                                    by: direction
+                                ) {
+                                    committedRows += direction
+                                }
+                            }
+                        }
+                        rowOffset = value.translation.height - CGFloat(committedRows) * rowStep
+                    }
+                    .onEnded { value in
+                        if committedRows == 0, abs(value.translation.height) >= 12 {
+                            _ = audio.moveMinimalApplication(
+                                preferenceKey: audio.minimalApplicationOrderKey(for: app),
+                                by: value.translation.height > 0 ? 1 : -1
+                            )
+                        }
+                        withAnimation(.interactiveSpring(response: 0.2, dampingFraction: 0.88)) {
+                            rowOffset = 0
+                            isDragging = false
+                        }
+                        lastTranslationBand = 0
+                        committedRows = 0
+                        audio.setUserInteractionActive(false)
+                    }
+            )
+            .accessibilityAdjustableAction { direction in
+                let step: Int
+                switch direction {
+                case .increment: step = 1
+                case .decrement: step = -1
+                @unknown default: return
+                }
+                _ = audio.moveMinimalApplication(
+                    preferenceKey: audio.minimalApplicationOrderKey(for: app),
+                    by: step
+                )
+            }
+            .accessibilityLabel("\(L10n.tr("拖动调整")) \(L10n.tr(app.name)) \(L10n.tr("的顺序"))")
+            .help(L10n.tr("按住并上下拖动调整应用顺序"))
     }
 }
 
